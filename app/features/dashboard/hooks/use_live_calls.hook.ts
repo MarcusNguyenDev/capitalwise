@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 
 import { fetchLiveCalls } from "@/shared/api_client/core_api.client";
+import { applyCallHold } from "@/shared/call_hold/apply_call_hold.util";
 import { describeError } from "@/shared/http/service_request.error";
 import { CALL_EVENTS, LIVE_EVENT } from "@/shared/live/live_event_names.constant";
 import { useLiveSocket } from "@/shared/live/live_socket.provider";
 import { useLiveEvent } from "@/shared/live/use_live_event.hook";
-import type { CallTurn, LiveCall } from "@/shared/types/call.type";
+import type { CallHoldEvent, CallTurn, LiveCall } from "@/shared/types/call.type";
 
 import { ENDED_CALL_LINGER_MS } from "../constants/dashboard.constant";
 
@@ -73,6 +74,10 @@ export function useLiveCalls(): LiveCalls {
 
   useLiveEvent<CallTurn>(LIVE_EVENT.CALL_TURN, (turn) => {
     setLiveCalls((current_calls) => applyTurn(current_calls, turn));
+  });
+
+  useLiveEvent<CallHoldEvent>(LIVE_EVENT.CALL_HOLD, (hold_event) => {
+    setLiveCalls((current_calls) => current_calls.map((call) => (call.call_id === hold_event.call_id ? applyCallHold(call, hold_event) : call)));
   });
 
   useLiveEvent(LIVE_EVENT.DEMO_RESET, () => {

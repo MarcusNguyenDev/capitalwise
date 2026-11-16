@@ -29,11 +29,3 @@ export interface ToolDefinition {
   requires_verified_identity: boolean;
   requires_matched_customer: boolean;
 }
-
-// OpenAI Realtime `tools` entry.
-export interface RealtimeToolDefinition {
-  type: 'function';
-  name: ToolName;
-  description: string;
-  parameters: JsonSchemaObject;
-}

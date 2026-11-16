@@ -12,6 +12,8 @@ export interface CallerDirectory {
   callers: Caller[];
   scripted_customer_ids: string[];
   is_live_available: boolean;
+  /** Why live voice is off, in `core`'s words. */
+  live_unavailable_reason: string | null;
   is_loading: boolean;
   error_message: string | null;
 }
@@ -26,6 +28,7 @@ export function useCallerDirectory(): CallerDirectory {
     callers: callers_query.data ?? [],
     scripted_customer_ids: (scripts_query.data ?? []).map((script_summary) => script_summary.customer_id),
     is_live_available: voice_status_query.data?.is_live_available ?? false,
+    live_unavailable_reason: voice_status_query.data?.unavailable_reason ?? voice_status_query.error_message,
     is_loading: callers_query.is_loading,
     error_message: callers_query.error_message,
   };

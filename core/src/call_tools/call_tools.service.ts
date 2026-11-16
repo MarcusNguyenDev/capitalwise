@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { AuditEventsRepository } from '../audit/audit_events.repository';
+import { CallHoldService } from '../calls/call_hold.service';
 import { CallsService } from '../calls/calls.service';
 import { CallRow } from '../calls/types/call_row.type';
 import { CallTurn } from '../calls/types/call_turn.type';
 import { EngineApiRejectedError } from '../engine_api/errors/engine_api_rejected.error';
 import { EngineApiUnavailableError } from '../engine_api/errors/engine_api_unavailable.error';
+import { findHoldReason } from '../hold_buffer/constants/tool_hold_classes.constant';
 import { findToolDefinition } from './constants/tool_definitions.constant';
 import { ToolRejectedError } from './errors/tool_rejected.error';
 import { ActionToolsHandler } from './handlers/action_tools.handler';
@@ -37,6 +39,7 @@ export class CallToolsService {
   constructor(
     private readonly calls_service: CallsService,
     private readonly audit_events_repository: AuditEventsRepository,
+    private readonly call_hold_service: CallHoldService,
     caller_identity_tools: CallerIdentityToolsHandler,
     banking_lookup_tools: BankingLookupToolsHandler,
     action_tools: ActionToolsHandler,
@@ -79,7 +82,7 @@ export class CallToolsService {
   ): Promise<ToolOutcome> {
     const call = await this.calls_service.getActiveCall(call_id);
     const started_at_ms = Date.now();
-    const tool_outcome = await this.runTool(call, tool_name, raw_args);
+    const tool_outcome = await this.runToolOnHold(call, tool_name, raw_args);
     await this.recordToolCall({
       call,
       tool_name,
@@ -88,6 +91,30 @@ export class CallToolsService {
       latency_ms: Date.now() - started_at_ms,
     });
     return tool_outcome;
+  }
+
+  // Scripted and simulated calls show the same hold state as live ones. In
+  // LIVE mode the voice agent owns the hold (it also plays the hold lines),
+  // so the dispatcher never emits it twice.
+  private async runToolOnHold(
+    call: CallRow,
+    tool_name: string,
+    raw_args: Record<string, unknown>,
+  ): Promise<ToolOutcome> {
+    const hold_reason =
+      call.metrics.mode === 'LIVE' ? null : findHoldReason([tool_name]);
+    if (!hold_reason) {
+      return this.runTool(call, tool_name, raw_args);
+    }
+    await this.call_hold_service.startHold(call.call_id, {
+      reason: hold_reason,
+      tool_name,
+    });
+    try {
+      return await this.runTool(call, tool_name, raw_args);
+    } finally {
+      await this.call_hold_service.endHold(call.call_id);
+    }
   }
 
   private async runTool(

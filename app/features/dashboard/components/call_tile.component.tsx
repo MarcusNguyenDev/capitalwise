@@ -1,4 +1,6 @@
 import { describeCallSource } from "@/features/call_detail/describe_call_source.util";
+import { readActiveHold } from "@/shared/call_hold/apply_call_hold.util";
+import { OnHoldChip } from "@/shared/call_hold/on_hold_chip.component";
 import { formatDuration, secondsBetween } from "@/shared/format/format_values.util";
 import type { CallStatus, LiveCall, TurnSpeaker } from "@/shared/types/call.type";
 import { Chip, RiskChip, SentimentChip } from "@/shared/ui/chip.component";
@@ -41,6 +43,7 @@ function readDurationSeconds(call: LiveCall, current_time_ms: number | null): nu
 export function CallTile({ call, is_selected, current_time_ms, onSelect }: CallTileProps) {
   const is_ended = call.status === "ENDED";
   const needs_attention = call.status === "NEEDS_ATTENTION";
+  const hold = readActiveHold(call);
 
   return (
     <button
@@ -73,6 +76,7 @@ export function CallTile({ call, is_selected, current_time_ms, onSelect }: CallT
       </p>
       {call.attention_reason && !is_ended ? <p className="truncate text-sm font-semibold text-accent">{call.attention_reason}</p> : null}
       <div className="flex flex-wrap items-center gap-1.5">
+        {hold ? <OnHoldChip hold={hold} current_time_ms={current_time_ms} /> : null}
         <SentimentChip sentiment={call.sentiment} />
         <RiskChip risk_level={call.risk_level} />
         <Chip>{describeCallSource(call)}</Chip>

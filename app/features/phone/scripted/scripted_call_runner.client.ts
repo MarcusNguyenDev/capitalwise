@@ -1,8 +1,8 @@
 import { SpeechOutput } from "@/features/voice/speech/speech_output.client";
-import type { StaffAudioSignal } from "@/features/voice/webrtc/staff_audio_signal.type";
 import { callTool, confirmInstructionApplied, endCall, recordTurn } from "@/shared/api_client/core_api.client";
 import type { CallCommand, CallScript, ScriptStep } from "@/shared/types/call.type";
 
+import { DEFAULT_TAKEOVER_ANNOUNCEMENT } from "../constants/phone_call.constant";
 import type { PhoneCallSession, PhoneCallSessionOptions } from "../session/phone_call_session.type";
 import { StaffHandover } from "../session/staff_handover.client";
 import { resolveScriptArguments, resolveScriptPlaceholders } from "./resolve_script_placeholders.util";
@@ -10,7 +10,6 @@ import {
   AI_THINKING_PAUSE_MAX_MS,
   AI_THINKING_PAUSE_MIN_MS,
   CALL_INSIGHT_TOOL_NAME,
-  DEFAULT_TAKEOVER_ANNOUNCEMENT,
   IDENTITY_PUSH_TOOL_NAME,
   UNVERIFIED_CALLER_LINE,
 } from "./scripted_call.constant";
@@ -23,7 +22,8 @@ interface ScriptedCallRunnerOptions extends PhoneCallSessionOptions {
 /**
  * Replays a hero call on the phone: lines are spoken with speech synthesis
  * and every turn, tool call and supervisor command goes through the same
- * `core` endpoints as a live voice call.
+ * `core` endpoints as a live voice call. The phone acts on supervisor
+ * commands itself; staff speech arrives over the call's LiveKit room.
  */
 export class ScriptedCallRunner implements PhoneCallSession {
   private readonly options: ScriptedCallRunnerOptions;
@@ -47,13 +47,14 @@ export class ScriptedCallRunner implements PhoneCallSession {
     this.placeholder_values = { bank_name: options.bank_name };
     this.speech_output = new SpeechOutput({ is_customer_male: options.is_customer_male });
     this.staff_handover = new StaffHandover({
+      call_id: options.call_id,
       speech_output: this.speech_output,
-      sendStaffAudioSignal: options.sendStaffAudioSignal,
-      getCustomerMicrophone: () => null,
+      onAudioChanged: options.listeners.onAudioChanged,
     });
   }
 
   async start(): Promise<void> {
+    void this.staff_handover.joinCallAudio();
     try {
       const steps = this.options.script.steps;
       while (this.current_step_index < steps.length) {
@@ -96,14 +97,18 @@ export class ScriptedCallRunner implements PhoneCallSession {
     }
   }
 
-  handleStaffAudioSignal(signal: StaffAudioSignal): void {
-    this.staff_handover.handleStaffAudioSignal(signal);
+  unlockAudio(): void {
+    this.staff_handover.unlockAudio();
+  }
+
+  setMicrophoneMuted(is_muted: boolean): void {
+    this.staff_handover.setMicrophoneMuted(is_muted);
   }
 
   stop(): void {
     this.is_stopped = true;
     this.speech_output.cancelAll();
-    this.staff_handover.closeStaffAudio();
+    this.staff_handover.close();
     this.notifyStateChanged();
   }
 
@@ -239,7 +244,7 @@ export class ScriptedCallRunner implements PhoneCallSession {
       confirmInstructionApplied(this.options.call_id, command.intervention_id).catch(() => undefined);
     }
     this.is_human_active = false;
-    this.staff_handover.closeStaffAudio();
+    this.staff_handover.endTakeover();
     this.notifyStateChanged();
   }
 

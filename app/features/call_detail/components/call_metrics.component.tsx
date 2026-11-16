@@ -25,6 +25,7 @@ export function CallMetrics({ metrics }: { metrics: CallMetricValues }) {
       <MetricValue label="Time to identity" value={formatMilliseconds(metrics.time_to_identity_ms)} />
       <MetricValue label="Time to a human" value={formatMilliseconds(metrics.time_to_human_ms)} />
       <MetricValue label="Estimated cost" value={formatCost(metrics.estimated_cost_usd)} />
+      <MetricValue label="Time on hold" value={formatMilliseconds(metrics.total_hold_ms ?? null)} />
     </div>
   );
 }

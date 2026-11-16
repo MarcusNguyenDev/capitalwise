@@ -8,6 +8,8 @@ import type { Socket } from "socket.io-client";
 
 import { getCoreBaseUrl } from "@/shared/config/service_urls.config";
 
+import { LIVE_MESSAGE } from "./live_event_names.constant";
+
 export interface JoinRequest {
   role: "STAFF" | "PHONE";
   staff_id?: string;
@@ -43,7 +45,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     const live_socket = io(getCoreBaseUrl(), { transports: ["websocket", "polling"] });
     const handleConnect = () => {
       for (const join_request of join_requests_ref.current.values()) {
-        live_socket.emit("join", join_request);
+        live_socket.emit(LIVE_MESSAGE.JOIN, join_request);
       }
       setIsConnected(true);
     };
@@ -64,7 +66,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
     (join_request: JoinRequest) => {
       join_requests_ref.current.set(buildJoinKey(join_request), join_request);
       if (socket?.connected) {
-        socket.emit("join", join_request);
+        socket.emit(LIVE_MESSAGE.JOIN, join_request);
       }
     },
     [socket],

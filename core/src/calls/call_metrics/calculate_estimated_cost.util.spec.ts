@@ -2,73 +2,80 @@ import { accumulateUsage } from './accumulate_usage.util';
 import { appendResponseTime } from './append_response_time.util';
 import {
   calculateEstimatedCostUsd,
-  TokenPrices,
+  UsagePrices,
 } from './calculate_estimated_cost.util';
 
-const TOKEN_PRICES: TokenPrices = {
-  audio_input_usd_per_1m: 32,
-  audio_output_usd_per_1m: 64,
-  text_input_usd_per_1m: 4,
-  text_output_usd_per_1m: 16,
-  cached_input_usd_per_1m: 0.4,
+const HOSTED_PRICES: UsagePrices = {
+  llm_input_usd_per_1m_tokens: 0.4,
+  llm_output_usd_per_1m_tokens: 1.6,
+  stt_usd_per_minute: 0.006,
+  tts_usd_per_1m_characters: 15,
+};
+
+const SELF_HOSTED_PRICES: UsagePrices = {
+  llm_input_usd_per_1m_tokens: 0,
+  llm_output_usd_per_1m_tokens: 0,
+  stt_usd_per_minute: 0,
+  tts_usd_per_1m_characters: 0,
 };
 
 describe('calculateEstimatedCostUsd', () => {
-  it('prices each token bucket at its own rate', () => {
+  it('prices tokens per million, audio per minute and characters per million', () => {
     const estimated_cost_usd = calculateEstimatedCostUsd(
       {
-        input_text_tokens: 1_000_000,
-        input_audio_tokens: 1_000_000,
-        cached_input_tokens: 1_000_000,
-        output_text_tokens: 1_000_000,
-        output_audio_tokens: 1_000_000,
+        llm_input_tokens: 1_000_000,
+        llm_output_tokens: 1_000_000,
+        stt_audio_seconds: 600,
+        tts_characters: 1_000_000,
       },
-      TOKEN_PRICES,
+      HOSTED_PRICES,
     );
-    expect(estimated_cost_usd).toBe(116.4);
+    // 0.4 + 1.6 + 10 minutes * 0.006 + 15
+    expect(estimated_cost_usd).toBe(17.06);
   });
 
   it('prices a realistic short call and rounds to four decimals', () => {
     const estimated_cost_usd = calculateEstimatedCostUsd(
       {
-        input_text_tokens: 2400,
-        input_audio_tokens: 3100,
-        cached_input_tokens: 9000,
-        output_text_tokens: 350,
-        output_audio_tokens: 2800,
+        llm_input_tokens: 24_000,
+        llm_output_tokens: 600,
+        stt_audio_seconds: 45,
+        tts_characters: 1_400,
       },
-      TOKEN_PRICES,
+      HOSTED_PRICES,
     );
-    // 0.0096 + 0.0992 + 0.0036 + 0.0056 + 0.1792
-    expect(estimated_cost_usd).toBe(0.2972);
+    // 0.0096 + 0.00096 + 0.0045 + 0.021
+    expect(estimated_cost_usd).toBe(0.0361);
   });
 
-  it('treats missing buckets as zero', () => {
-    expect(calculateEstimatedCostUsd({}, TOKEN_PRICES)).toBe(0);
+  it('costs nothing when everything is self-hosted or usage is missing', () => {
+    expect(calculateEstimatedCostUsd({}, HOSTED_PRICES)).toBe(0);
     expect(
-      calculateEstimatedCostUsd({ output_audio_tokens: 500_000 }, TOKEN_PRICES),
-    ).toBe(32);
+      calculateEstimatedCostUsd(
+        { llm_input_tokens: 50_000, tts_characters: 9_000 },
+        SELF_HOSTED_PRICES,
+      ),
+    ).toBe(0);
   });
 });
 
 describe('accumulateUsage', () => {
   it('adds an increment to the usage so far', () => {
     const accumulated_usage = accumulateUsage(
-      { input_audio_tokens: 100, output_audio_tokens: 40 },
-      { input_audio_tokens: 50, cached_input_tokens: 10 },
+      { llm_input_tokens: 100, stt_audio_seconds: 1.25 },
+      { llm_input_tokens: 50, stt_audio_seconds: 2.5, tts_characters: 80 },
     );
     expect(accumulated_usage).toEqual({
-      input_text_tokens: 0,
-      input_audio_tokens: 150,
-      cached_input_tokens: 10,
-      output_text_tokens: 0,
-      output_audio_tokens: 40,
+      llm_input_tokens: 150,
+      llm_output_tokens: 0,
+      stt_audio_seconds: 3.75,
+      tts_characters: 80,
     });
   });
 
   it('starts from zero when there is no usage yet', () => {
     expect(
-      accumulateUsage(undefined, { output_text_tokens: 7 }).output_text_tokens,
+      accumulateUsage(undefined, { llm_output_tokens: 7 }).llm_output_tokens,
     ).toBe(7);
   });
 });

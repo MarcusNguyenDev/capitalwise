@@ -7,5 +7,3 @@ export const CALL_INSIGHT_TOOL_NAME = "update_call_insight";
 
 export const UNVERIFIED_CALLER_LINE =
   "I wasn't able to confirm it's you in the banking app, so I can't go any further on this call. Please call back when you have your app handy. Goodbye for now.";
-
-export const DEFAULT_TAKEOVER_ANNOUNCEMENT = "You're now speaking with a specialist from our team";

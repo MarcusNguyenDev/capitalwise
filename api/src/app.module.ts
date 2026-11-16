@@ -27,7 +27,7 @@ import { RoutingModule } from './routing/routing.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../.env'],
+      envFilePath: ['.env'],
       load: [appConfig, databaseConfig, cacheConfig],
     }),
     DatabaseModule,

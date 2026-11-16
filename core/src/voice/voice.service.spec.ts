@@ -1,128 +1,274 @@
+import { AiService } from '../ai/ai.service';
+import { AiStatus, CapabilityStatus } from '../ai/types/ai_status.type';
 import { CallsService } from '../calls/calls.service';
-import { PromptsService } from '../prompts/prompts.service';
+import { CallRow } from '../calls/types/call_row.type';
+import { StaffNotFoundError } from '../interventions/errors/staff_not_found.error';
+import { StaffUsersRepository } from '../interventions/staff_users.repository';
+import { MediaUnavailableError } from '../livekit/errors/media_unavailable.error';
+import { LivekitRoomsService } from '../livekit/livekit_rooms.service';
+import { LivekitTokensService } from '../livekit/livekit_tokens.service';
+import { VoiceAgentSessionManager } from '../voice_agent/voice_agent_session.manager';
 import { LiveVoiceUnavailableError } from './errors/live_voice_unavailable.error';
-import { VoiceSessionMintFailedError } from './errors/voice_session_mint_failed.error';
-import { OpenAiRealtimeClient } from './openai_realtime.client';
+import { StaffCannotPublishError } from './errors/staff_cannot_publish.error';
 import { VoiceService } from './voice.service';
 
 const CALL_ID = '0b0f7c0e-5d3a-4f6e-9a55-3a3f3a3f3a3f';
+const CHAT_NOT_CONFIGURED =
+  'Chat provider ollama is not configured. Set OLLAMA_BASE_URL in core/.env.';
 
-function buildVoiceConfig(openai_api_key: string) {
+function buildCapability(
+  capability_overrides: Partial<CapabilityStatus> = {},
+): CapabilityStatus {
   return {
-    openai_api_key,
-    openai_base_url: 'https://api.openai.com/v1',
-    realtime_model: 'gpt-realtime',
-    realtime_voice: 'marin',
-    transcription_model: 'gpt-4o-mini-transcribe',
+    provider: 'speaches',
+    model: 'some-model',
+    is_reachable: true,
+    detail: 'ok',
+    ...capability_overrides,
   };
 }
 
-function buildVoiceService(openai_api_key: string) {
-  const voice_config = buildVoiceConfig(openai_api_key);
+function buildAiStatus(is_chat_reachable: boolean): AiStatus {
+  return {
+    capabilities: {
+      chat: buildCapability({
+        provider: 'ollama',
+        model: 'gpt-6:luna',
+        is_reachable: is_chat_reachable,
+        detail: is_chat_reachable ? 'ok' : CHAT_NOT_CONFIGURED,
+      }),
+      transcribe: buildCapability(),
+      synthesize: buildCapability({ voice: 'bf_emma' }),
+    },
+    providers: {} as AiStatus['providers'],
+    checked_at: new Date().toISOString(),
+  };
+}
+
+function buildCall(call_overrides: Partial<CallRow> = {}): CallRow {
+  return {
+    call_id: CALL_ID,
+    caller_number: '+61491570156',
+    customer_id: 'CUS-1001',
+    customer_name: 'Sarah Mitchell',
+    channel: 'BROWSER',
+    status: 'AI_ACTIVE',
+    handled_by_agent_id: 'AI-01',
+    assigned_staff_id: null,
+    identity_verified: false,
+    verified_at: null,
+    intent: null,
+    sentiment: 'NEUTRAL',
+    risk_level: 'LOW',
+    attention_reason: null,
+    started_at: new Date(),
+    ended_at: null,
+    ai_summary: null,
+    metrics: { mode: 'LIVE' },
+    ...call_overrides,
+  };
+}
+
+function buildHarness(harness_options: {
+  call: CallRow;
+  is_chat_reachable?: boolean;
+  is_media_available?: boolean;
+}) {
+  const ai_service = {
+    getStatus: jest
+      .fn()
+      .mockResolvedValue(
+        buildAiStatus(harness_options.is_chat_reachable ?? true),
+      ),
+  };
   const calls_service = {
-    getActiveCall: jest.fn().mockResolvedValue({ call_id: CALL_ID }),
+    getActiveCall: jest.fn().mockResolvedValue(harness_options.call),
   };
-  const prompts_service = {
-    getVoiceAgentInstructions: jest.fn().mockResolvedValue({
-      prompt_version: '1.1',
-      instructions: 'You are the AI phone specialist for Demo Bank.',
+  const staff_users_repository = {
+    findById: jest.fn(async (staff_id: string) =>
+      staff_id === 'STF-01'
+        ? { staff_id, name: 'Alex Chen', role: 'TEAM_LEADER' }
+        : undefined,
+    ),
+  };
+  const livekit_tokens_service = {
+    mintToken: jest.fn().mockResolvedValue('jwt-token'),
+  };
+  const is_media_available = harness_options.is_media_available ?? true;
+  const livekit_rooms_service = {
+    checkAvailability: jest.fn().mockResolvedValue({
+      is_available: is_media_available,
+      unavailable_reason: is_media_available
+        ? null
+        : 'LiveKit at http://localhost:7880 is not reachable.',
     }),
+    readBrowserUrl: jest.fn().mockReturnValue(null),
   };
-  const openai_realtime_client = new OpenAiRealtimeClient(voice_config);
+  const voice_agent_session_manager = {
+    startSession: jest.fn().mockResolvedValue(undefined),
+  };
   const voice_service = new VoiceService(
-    voice_config,
+    ai_service as unknown as AiService,
     calls_service as unknown as CallsService,
-    prompts_service as unknown as PromptsService,
-    openai_realtime_client,
+    staff_users_repository as unknown as StaffUsersRepository,
+    livekit_tokens_service as unknown as LivekitTokensService,
+    livekit_rooms_service as unknown as LivekitRoomsService,
+    voice_agent_session_manager as unknown as VoiceAgentSessionManager,
+    {
+      synthesize: { ai_voice: 'bf_emma', staff_voice: 'bm_george' },
+    } as never,
   );
-  return { voice_service, calls_service };
+  return {
+    voice_service,
+    livekit_tokens_service,
+    voice_agent_session_manager,
+  };
 }
 
 describe('VoiceService', () => {
-  const original_fetch = global.fetch;
+  describe('status', () => {
+    it('is live when LiveKit and every AI capability are reachable', async () => {
+      const { voice_service } = buildHarness({ call: buildCall() });
 
-  afterEach(() => {
-    global.fetch = original_fetch;
-  });
+      const voice_status = await voice_service.getStatus();
 
-  it('reports live voice as unavailable without a key and refuses to mint', async () => {
-    const { voice_service } = buildVoiceService('');
-    global.fetch = jest.fn();
-
-    expect(voice_service.getStatus()).toEqual({
-      is_live_available: false,
-      model: 'gpt-realtime',
-      voice: 'marin',
+      expect(voice_status).toMatchObject({
+        is_live_available: true,
+        unavailable_reason: null,
+        livekit_url: null,
+        is_media_available: true,
+        language_model: { model: 'gpt-6:luna', is_reachable: true },
+        text_to_speech: { ai_voice: 'bf_emma', staff_voice: 'bm_george' },
+      });
     });
-    await expect(voice_service.createSession(CALL_ID)).rejects.toBeInstanceOf(
-      LiveVoiceUnavailableError,
-    );
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
 
-  it('mints an ephemeral client secret with the key kept server-side', async () => {
-    const { voice_service, calls_service } = buildVoiceService('sk-test-key');
-    const fetch_mock = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        value: 'ek_test_secret',
-        expires_at: 1_800_000_000,
-        session: {},
-      }),
-    });
-    global.fetch = fetch_mock as unknown as typeof fetch;
+    it('says why live is unavailable while media still works', async () => {
+      const { voice_service } = buildHarness({
+        call: buildCall(),
+        is_chat_reachable: false,
+      });
 
-    const voice_session = await voice_service.createSession(CALL_ID);
+      const voice_status = await voice_service.getStatus();
 
-    expect(calls_service.getActiveCall).toHaveBeenCalledWith(CALL_ID);
-    const [request_url, request_init] = fetch_mock.mock.calls[0];
-    expect(request_url).toBe(
-      'https://api.openai.com/v1/realtime/client_secrets',
-    );
-    expect(request_init.method).toBe('POST');
-    expect(request_init.headers.Authorization).toBe('Bearer sk-test-key');
-    const request_body = JSON.parse(request_init.body);
-    expect(request_body.session.type).toBe('realtime');
-    expect(request_body.session.model).toBe('gpt-realtime');
-    expect(request_body.session.audio.output.voice).toBe('marin');
-    expect(request_body.session.tools).toHaveLength(13);
-
-    expect(voice_session.client_secret).toBe('ek_test_secret');
-    expect(voice_session.expires_at).toBe(
-      new Date(1_800_000_000_000).toISOString(),
-    );
-    expect(voice_session.model).toBe('gpt-realtime');
-    expect(voice_session.voice).toBe('marin');
-    expect(voice_session.instructions).toContain('Demo Bank');
-    expect(voice_session.tools).toHaveLength(13);
-    expect(JSON.stringify(voice_session)).not.toContain('sk-test-key');
-  });
-
-  it('maps an OpenAI error to a typed 502 error', async () => {
-    const { voice_service } = buildVoiceService('sk-test-key');
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: { message: 'Incorrect API key provided' } }),
-    }) as unknown as typeof fetch;
-
-    await expect(voice_service.createSession(CALL_ID)).rejects.toMatchObject({
-      error_code: 'VOICE_SESSION_MINT_FAILED',
-      message: expect.stringContaining('Incorrect API key provided'),
+      expect(voice_status.is_live_available).toBe(false);
+      expect(voice_status.unavailable_reason).toBe(CHAT_NOT_CONFIGURED);
+      expect(voice_status.is_media_available).toBe(true);
     });
   });
 
-  it('maps a network failure to the same typed error', async () => {
-    const { voice_service } = buildVoiceService('sk-test-key');
-    global.fetch = jest
-      .fn()
-      .mockRejectedValue(
-        new Error('socket hang up'),
-      ) as unknown as typeof fetch;
+  describe('customer sessions', () => {
+    it('mints a customer token and starts the voice agent for a LIVE call', async () => {
+      const harness = buildHarness({ call: buildCall() });
 
-    await expect(voice_service.createSession(CALL_ID)).rejects.toBeInstanceOf(
-      VoiceSessionMintFailedError,
-    );
+      const room_access =
+        await harness.voice_service.createCustomerSession(CALL_ID);
+
+      expect(room_access).toEqual({
+        room_name: `call_${CALL_ID}`,
+        livekit_url: null,
+        token: 'jwt-token',
+        identity: 'customer',
+      });
+      expect(harness.livekit_tokens_service.mintToken).toHaveBeenCalledWith({
+        room_name: `call_${CALL_ID}`,
+        identity: 'customer',
+        display_name: 'Sarah Mitchell',
+        can_publish: true,
+      });
+      expect(
+        harness.voice_agent_session_manager.startSession,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a LIVE session with the reason when live is unavailable', async () => {
+      const harness = buildHarness({
+        call: buildCall(),
+        is_chat_reachable: false,
+      });
+
+      await expect(
+        harness.voice_service.createCustomerSession(CALL_ID),
+      ).rejects.toBeInstanceOf(LiveVoiceUnavailableError);
+      expect(
+        harness.voice_agent_session_manager.startSession,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('only mints a token for a SCRIPTED call, and needs LiveKit for it', async () => {
+      const scripted_call = buildCall({ metrics: { mode: 'SCRIPTED' } });
+      const harness = buildHarness({
+        call: scripted_call,
+        is_chat_reachable: false,
+      });
+      await harness.voice_service.createCustomerSession(CALL_ID);
+      expect(
+        harness.voice_agent_session_manager.startSession,
+      ).not.toHaveBeenCalled();
+
+      const no_media_harness = buildHarness({
+        call: scripted_call,
+        is_media_available: false,
+      });
+      await expect(
+        no_media_harness.voice_service.createCustomerSession(CALL_ID),
+      ).rejects.toBeInstanceOf(MediaUnavailableError);
+    });
+  });
+
+  describe('staff tokens', () => {
+    it('lets any staff member listen in without publishing', async () => {
+      const harness = buildHarness({ call: buildCall() });
+
+      const room_access = await harness.voice_service.createStaffToken({
+        call_id: CALL_ID,
+        staff_id: 'STF-01',
+        can_publish: false,
+      });
+
+      expect(room_access.identity).toBe('staff_STF-01');
+      expect(harness.livekit_tokens_service.mintToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          can_publish: false,
+          display_name: 'Alex Chen',
+        }),
+      );
+    });
+
+    it('lets staff talk only on a call they took over', async () => {
+      const ai_call_harness = buildHarness({ call: buildCall() });
+      await expect(
+        ai_call_harness.voice_service.createStaffToken({
+          call_id: CALL_ID,
+          staff_id: 'STF-01',
+          can_publish: true,
+        }),
+      ).rejects.toBeInstanceOf(StaffCannotPublishError);
+
+      const taken_over_harness = buildHarness({
+        call: buildCall({
+          status: 'HUMAN_ACTIVE',
+          assigned_staff_id: 'STF-01',
+        }),
+      });
+      const room_access =
+        await taken_over_harness.voice_service.createStaffToken({
+          call_id: CALL_ID,
+          staff_id: 'STF-01',
+          can_publish: true,
+        });
+      expect(room_access.token).toBe('jwt-token');
+    });
+
+    it('rejects an unknown staff member', async () => {
+      const harness = buildHarness({ call: buildCall() });
+
+      await expect(
+        harness.voice_service.createStaffToken({
+          call_id: CALL_ID,
+          staff_id: 'STF-99',
+          can_publish: false,
+        }),
+      ).rejects.toBeInstanceOf(StaffNotFoundError);
+    });
   });
 });

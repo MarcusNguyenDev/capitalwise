@@ -95,6 +95,7 @@ export function CustomerPhone() {
           <CallModeSwitch
             call_mode={call_mode}
             is_live_available={caller_directory.is_live_available}
+            live_unavailable_reason={caller_directory.live_unavailable_reason}
             is_scripted_available={is_scripted_available}
             is_disabled={is_busy}
             onChange={setPreferredMode}
@@ -118,7 +119,11 @@ export function CustomerPhone() {
             captions={phone_call.captions}
             human_staff_name={phone_call.human_staff_name}
             call_seconds={call_seconds}
+            current_time_ms={current_time_ms}
+            call_audio={phone_call.call_audio}
             onHangUp={phone_call.hangUp}
+            onUnlockAudio={phone_call.unlockAudio}
+            onMicrophoneMutedChange={phone_call.setMicrophoneMuted}
           />
         ) : (
           <PhoneIdleScreen

@@ -1,4 +1,5 @@
 import { AuditEventsRepository } from '../audit/audit_events.repository';
+import { CallHoldService } from '../calls/call_hold.service';
 import { CallsService } from '../calls/calls.service';
 import { CallEndedError } from '../calls/errors/call_ended.error';
 import { CallChanges, CallRow } from '../calls/types/call_row.type';
@@ -115,12 +116,17 @@ function buildHarness(call: CallRow) {
     waitForAnswer: jest.fn().mockResolvedValue('APPROVED'),
   };
   const live_event_bus = new LiveEventBus();
+  const call_hold_service = {
+    startHold: jest.fn().mockResolvedValue(undefined),
+    endHold: jest.fn().mockResolvedValue(0),
+  };
 
   const typed_calls_service = calls_service as unknown as CallsService;
   const typed_api_client = engine_api_client as unknown as EngineApiClient;
   const call_tools_service = new CallToolsService(
     typed_calls_service,
     audit_events_repository as unknown as AuditEventsRepository,
+    call_hold_service as unknown as CallHoldService,
     new CallerIdentityToolsHandler(
       typed_api_client,
       typed_calls_service,
@@ -138,6 +144,7 @@ function buildHarness(call: CallRow) {
     engine_api_client,
     identity_push_waiter,
     live_event_bus,
+    call_hold_service,
     applied_call_changes,
   };
 }
@@ -879,6 +886,84 @@ describe('CallToolsService', () => {
         attention_reason: 'Vulnerability signals',
         assigned_staff_id: 'STF-03',
       });
+    });
+  });
+  describe('hold state', () => {
+    it('puts a scripted call on hold around a bank lookup', async () => {
+      const harness = buildHarness(
+        buildCall({ metrics: { mode: 'SCRIPTED' } }),
+      );
+
+      await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'get_fee_history',
+        {},
+      );
+
+      expect(harness.call_hold_service.startHold).toHaveBeenCalledWith(
+        CALL_ID,
+        { reason: 'CHECKING_SYSTEM', tool_name: 'get_fee_history' },
+      );
+      expect(harness.call_hold_service.endHold).toHaveBeenCalledWith(CALL_ID);
+    });
+
+    it('waits for the app approval while the identity push is out', async () => {
+      const harness = buildHarness(
+        buildCall({ identity_verified: false, metrics: { mode: 'SCRIPTED' } }),
+      );
+
+      await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'send_identity_push',
+        {},
+      );
+
+      expect(harness.call_hold_service.startHold).toHaveBeenCalledWith(
+        CALL_ID,
+        { reason: 'WAITING_FOR_APP_APPROVAL', tool_name: 'send_identity_push' },
+      );
+    });
+
+    it('never holds for silent tools, and leaves LIVE calls to the voice agent', async () => {
+      const scripted_harness = buildHarness(
+        buildCall({ metrics: { mode: 'SCRIPTED' } }),
+      );
+      await scripted_harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'update_call_insight',
+        { intent: 'Lost card' },
+      );
+      const live_harness = buildHarness(
+        buildCall({ metrics: { mode: 'LIVE' } }),
+      );
+      await live_harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'get_fee_history',
+        {},
+      );
+
+      expect(
+        scripted_harness.call_hold_service.startHold,
+      ).not.toHaveBeenCalled();
+      expect(live_harness.call_hold_service.startHold).not.toHaveBeenCalled();
+    });
+
+    it('ends the hold even when the tool fails', async () => {
+      const harness = buildHarness(
+        buildCall({ metrics: { mode: 'SCRIPTED' } }),
+      );
+      harness.engine_api_client.getFeeHistory.mockRejectedValue(
+        new EngineApiUnavailableError('fee history', 'down'),
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'get_fee_history',
+        {},
+      );
+
+      expect(tool_outcome.ok).toBe(false);
+      expect(harness.call_hold_service.endHold).toHaveBeenCalledTimes(1);
     });
   });
 });

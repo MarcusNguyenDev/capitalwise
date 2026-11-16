@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { StaffAudioSignal } from "@/features/voice/webrtc/staff_audio_signal.type";
+import type { CallRoomState } from "@/features/voice/livekit/call_room.type";
 import { endCall, fetchScriptedCall, startCall } from "@/shared/api_client/core_api.client";
+import { applyCallHold } from "@/shared/call_hold/apply_call_hold.util";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { describeError } from "@/shared/http/service_request.error";
-import { LIVE_EVENT, LIVE_MESSAGE } from "@/shared/live/live_event_names.constant";
+import { LIVE_EVENT } from "@/shared/live/live_event_names.constant";
 import { useLiveSocket } from "@/shared/live/live_socket.provider";
 import { useLiveEvent } from "@/shared/live/use_live_event.hook";
-import type { CallCommand, CallMode, CallScript, LiveCall, WebrtcSignal } from "@/shared/types/call.type";
+import type { CallCommand, CallHoldEvent, CallMode, CallScript, CallTurn, LiveCall, TranscriptDelta } from "@/shared/types/call.type";
 import type { Caller } from "@/shared/types/resources.type";
 import { useToast } from "@/shared/ui/toast.provider";
 
@@ -48,8 +49,12 @@ export interface PhoneCall {
   captions: PhoneCaption[];
   human_staff_name: string | null;
   connected_at_ms: number | null;
+  /** The call's LiveKit room, once the phone has joined it. */
+  call_audio: CallRoomState | null;
   placeCall: (caller: Caller, call_mode: CallMode) => Promise<void>;
   hangUp: () => void;
+  unlockAudio: () => void;
+  setMicrophoneMuted: (is_muted: boolean) => void;
 }
 
 // Read in the call handler, never during render; kept outside the hook so the purity lint rule can tell.
@@ -69,8 +74,9 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
   const [captions, setCaptions] = useState<PhoneCaption[]>([]);
   const [human_staff_name, setHumanStaffName] = useState<string | null>(null);
   const [connected_at_ms, setConnectedAtMs] = useState<number | null>(null);
+  const [call_audio, setCallAudio] = useState<CallRoomState | null>(null);
   const active_session_ref = useRef<ActiveSession | null>(null);
-  const { socket, joinRooms } = useLiveSocket();
+  const { joinRooms } = useLiveSocket();
   const { bank_name } = useDemoConfig();
   const { showToast } = useToast();
 
@@ -82,6 +88,7 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     }
     active_session_ref.current = null;
     setHumanStaffName(null);
+    setCallAudio(null);
     setCallPhase("ENDED");
     setTimeout(() => setCallPhase((current_phase) => (current_phase === "ENDED" ? "IDLE" : current_phase)), CALL_ENDED_SCREEN_MS);
   };
@@ -93,6 +100,7 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     active_session_ref.current = null;
     setCallPhase("IDLE");
     setActiveCall(null);
+    setCallAudio(null);
     endCall(call_id, "SYSTEM").catch(() => undefined);
   };
 
@@ -127,22 +135,22 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     const session_options: PhoneCallSessionOptions = {
       call_id: call.call_id,
       is_customer_male: findHeroPersona(caller.customer_id)?.is_male ?? false,
-      sendStaffAudioSignal: (signal: StaffAudioSignal) => {
-        socket?.emit(LIVE_MESSAGE.WEBRTC_SIGNAL, { call_id: call.call_id, sender: "PHONE", payload: signal });
-      },
       listeners: {
-        onCaption: (caption) => setCaptions((current_captions) => updateCaptions(current_captions, caption)),
+        onCaption: (caption) => {
+          if (isCurrentCall(call.call_id)) {
+            setCaptions((current_captions) => updateCaptions(current_captions, caption));
+          }
+        },
+        onAudioChanged: (room_state) => {
+          if (isCurrentCall(call.call_id)) {
+            setCallAudio(room_state);
+          }
+        },
         onEnded: () => showEndedScreen(call.call_id),
         onFailed: (error) => handleSessionFailure(session_context, error),
       },
     };
-    if (!script) {
-      return new LiveVoiceSession({
-        ...session_options,
-        sendTranscriptDelta: (transcript_delta) => socket?.emit(LIVE_MESSAGE.TRANSCRIPT_DELTA, transcript_delta),
-      });
-    }
-    return new ScriptedCallRunner({ ...session_options, script, bank_name });
+    return script ? new ScriptedCallRunner({ ...session_options, script, bank_name }) : new LiveVoiceSession(session_options);
   };
 
   const placeCall = async (caller: Caller, requested_mode: CallMode): Promise<void> => {
@@ -153,6 +161,7 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     setCallMode(requested_mode);
     setCaptions([]);
     setHumanStaffName(null);
+    setCallAudio(null);
     try {
       const script = requested_mode === "SCRIPTED" ? await fetchScriptedCall(caller.customer_id) : null;
       const call = await startCall({ caller_number: caller.mobile_phone, channel: "BROWSER", mode: requested_mode });
@@ -192,10 +201,21 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     active_session.session.handleCommand(command);
   });
 
-  useLiveEvent<WebrtcSignal>(LIVE_EVENT.WEBRTC_SIGNAL, (webrtc_signal) => {
-    const active_session = active_session_ref.current;
-    if (active_session && webrtc_signal.sender === "STAFF" && webrtc_signal.call_id === active_session.call_id) {
-      active_session.session.handleStaffAudioSignal(webrtc_signal.payload as StaffAudioSignal);
+  useLiveEvent<CallTurn>(LIVE_EVENT.CALL_TURN, (turn) => {
+    if (isCurrentCall(turn.call_id)) {
+      active_session_ref.current?.session.handleTurn?.(turn);
+    }
+  });
+
+  useLiveEvent<TranscriptDelta>(LIVE_EVENT.CALL_TRANSCRIPT_DELTA, (transcript_delta) => {
+    if (isCurrentCall(transcript_delta.call_id)) {
+      active_session_ref.current?.session.handleTranscriptDelta?.(transcript_delta);
+    }
+  });
+
+  useLiveEvent<CallHoldEvent>(LIVE_EVENT.CALL_HOLD, (hold_event) => {
+    if (isCurrentCall(hold_event.call_id)) {
+      setActiveCall((current_call) => (current_call ? applyCallHold(current_call, hold_event) : current_call));
     }
   });
 
@@ -224,5 +244,17 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     return () => active_session_ref.current?.session.stop();
   }, []);
 
-  return { call_phase, active_call, call_mode, captions, human_staff_name, connected_at_ms, placeCall, hangUp };
+  return {
+    call_phase,
+    active_call,
+    call_mode,
+    captions,
+    human_staff_name,
+    connected_at_ms,
+    call_audio,
+    placeCall,
+    hangUp,
+    unlockAudio: () => active_session_ref.current?.session.unlockAudio(),
+    setMicrophoneMuted: (is_muted) => active_session_ref.current?.session.setMicrophoneMuted(is_muted),
+  };
 }

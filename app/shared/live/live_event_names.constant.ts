@@ -7,7 +7,7 @@ export const LIVE_EVENT = {
   CALL_TRANSCRIPT_DELTA: "call.transcript_delta", // TranscriptDelta
   CALL_INTERVENTION: "call.intervention", // Intervention
   CALL_COMMAND: "call.command", // CallCommand (phone only)
-  WEBRTC_SIGNAL: "webrtc_signal", // WebrtcSignal
+  CALL_HOLD: "call.hold", // CallHoldEvent
   SIMULATOR_STATUS: "simulator.status", // SimulatorStatus
   CASE_CREATED: "case.created", // EngineCase
   CASE_UPDATED: "case.updated", // EngineCase
@@ -20,8 +20,6 @@ export const LIVE_EVENT = {
 /** Client -> server socket messages. */
 export const LIVE_MESSAGE = {
   JOIN: "join",
-  TRANSCRIPT_DELTA: "transcript_delta",
-  WEBRTC_SIGNAL: "webrtc_signal",
 } as const;
 
 export const CALL_EVENTS = [LIVE_EVENT.CALL_STARTED, LIVE_EVENT.CALL_UPDATED, LIVE_EVENT.CALL_ENDED] as const;

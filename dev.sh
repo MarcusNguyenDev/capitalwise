@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-docker compose up -d db cache
+docker compose up -d db cache media speech speech-models
 
 echo "Waiting for the database..."
 until docker compose exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; do

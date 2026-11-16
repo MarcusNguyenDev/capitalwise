@@ -1,12 +1,13 @@
 import { CallUsage } from '../types/call_metrics.type';
 
 const USAGE_KEYS: (keyof CallUsage)[] = [
-  'input_text_tokens',
-  'input_audio_tokens',
-  'cached_input_tokens',
-  'output_text_tokens',
-  'output_audio_tokens',
+  'llm_input_tokens',
+  'llm_output_tokens',
+  'stt_audio_seconds',
+  'tts_characters',
 ];
+
+const STT_SECONDS_DECIMAL_PLACES = 2;
 
 export function accumulateUsage(
   usage_so_far: Partial<CallUsage> | undefined,
@@ -17,5 +18,9 @@ export function accumulateUsage(
     accumulated_usage[usage_key] =
       (usage_so_far?.[usage_key] ?? 0) + (usage_increment[usage_key] ?? 0);
   }
+  const rounding_factor = 10 ** STT_SECONDS_DECIMAL_PLACES;
+  accumulated_usage.stt_audio_seconds =
+    Math.round(accumulated_usage.stt_audio_seconds * rounding_factor) /
+    rounding_factor;
   return accumulated_usage;
 }

@@ -1,32 +1,30 @@
 import { CallUsage } from '../types/call_metrics.type';
 
-export interface TokenPrices {
-  audio_input_usd_per_1m: number;
-  audio_output_usd_per_1m: number;
-  text_input_usd_per_1m: number;
-  text_output_usd_per_1m: number;
-  cached_input_usd_per_1m: number;
+export interface UsagePrices {
+  llm_input_usd_per_1m_tokens: number;
+  llm_output_usd_per_1m_tokens: number;
+  stt_usd_per_minute: number;
+  tts_usd_per_1m_characters: number;
 }
 
-const TOKENS_PER_PRICE_UNIT = 1_000_000;
+const UNITS_PER_MILLION = 1_000_000;
+const SECONDS_PER_MINUTE = 60;
 const COST_DECIMAL_PLACES = 4;
 
-// `input_text_tokens` and `input_audio_tokens` are the NON-cached tokens;
-// cached input (text or audio) is billed at the single cached rate.
+// All prices default to 0 because every model is self-hosted; set them in
+// core/.env to estimate the cost of a hosted provider.
 export function calculateEstimatedCostUsd(
   usage: Partial<CallUsage>,
-  token_prices: TokenPrices,
+  usage_prices: UsagePrices,
 ): number {
-  const price_weighted_tokens =
-    (usage.input_text_tokens ?? 0) * token_prices.text_input_usd_per_1m +
-    (usage.input_audio_tokens ?? 0) * token_prices.audio_input_usd_per_1m +
-    (usage.cached_input_tokens ?? 0) * token_prices.cached_input_usd_per_1m +
-    (usage.output_text_tokens ?? 0) * token_prices.text_output_usd_per_1m +
-    (usage.output_audio_tokens ?? 0) * token_prices.audio_output_usd_per_1m;
+  const estimated_cost_usd =
+    ((usage.llm_input_tokens ?? 0) * usage_prices.llm_input_usd_per_1m_tokens +
+      (usage.llm_output_tokens ?? 0) *
+        usage_prices.llm_output_usd_per_1m_tokens +
+      (usage.tts_characters ?? 0) * usage_prices.tts_usd_per_1m_characters) /
+      UNITS_PER_MILLION +
+    ((usage.stt_audio_seconds ?? 0) / SECONDS_PER_MINUTE) *
+      usage_prices.stt_usd_per_minute;
   const rounding_factor = 10 ** COST_DECIMAL_PLACES;
-  return (
-    Math.round(
-      (price_weighted_tokens / TOKENS_PER_PRICE_UNIT) * rounding_factor,
-    ) / rounding_factor
-  );
+  return Math.round(estimated_cost_usd * rounding_factor) / rounding_factor;
 }

@@ -22,19 +22,17 @@ services:
     working_dir: /workspaces/api
     # node_modules lives in a named volume, so it is empty on a fresh start.
     command: sh -c "bun install && exec bun run dev"
-    # The root .env carries the infrastructure credentials (DB_*, CACHE_*), so
-    # they are defined once; api/.env carries the API's own settings.
-    # Missing files are fine — the app falls back to its defaults.
+    # api/.env is the only config this service reads: its own settings and
+    # secrets (database and cache credentials included). Missing is fine, the
+    # app then uses the defaults from api/.env.example.
     env_file:
-      - path: ../.env
-        required: false
       - path: ./.env
         required: false
     environment:
       NODE_ENV: development
       # The container port is fixed; API_PORT moves the host side only.
       PORT: "3002"
-      # In-network addresses — these win over the host ports in ../.env.
+      # In-network addresses: these win over the host ports in api/.env.
       DB_HOST: db
       DB_PORT: "5432"
       CACHE_HOST: cache

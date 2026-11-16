@@ -390,5 +390,6 @@ export class InterventionsService {
     this.live_broadcaster.emitToRooms(LIVE_EVENT.CALL_COMMAND, call_command, [
       buildCallRoom(call_command.call_id),
     ]);
+    this.live_event_bus.publish(INTERNAL_EVENT.CALL_COMMAND, call_command);
   }
 }

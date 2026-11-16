@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 
+import { readActiveHold } from "@/shared/call_hold/apply_call_hold.util";
+import { OnHoldChip } from "@/shared/call_hold/on_hold_chip.component";
 import { formatDuration, secondsBetween } from "@/shared/format/format_values.util";
 import { useCurrentTime } from "@/shared/format/use_current_time.hook";
 import { useCurrentStaff } from "@/shared/staff/current_staff.provider";
@@ -12,9 +14,11 @@ import { ErrorState, LoadingState } from "@/shared/ui/surface.component";
 
 import { describeCallSource } from "../describe_call_source.util";
 import { useCallDetail } from "../hooks/use_call_detail.hook";
+import { useStaffCallAudio } from "../hooks/use_staff_call_audio.hook";
 import { recordMonitoring } from "../record_monitoring.util";
 import { buildTranscriptEntries } from "../transcript/build_transcript_entries.util";
 import { CallActionButtons } from "./call_action_buttons.component";
+import { CallAudioBar } from "./call_audio_bar.component";
 import { CallMetrics } from "./call_metrics.component";
 import { CallTranscript } from "./call_transcript.component";
 import { CustomerContext } from "./customer_context.component";
@@ -33,6 +37,7 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
 function CallHeader({ call, onClose }: { call: LiveCall; onClose: () => void }) {
   const current_time_ms = useCurrentTime();
   const duration_seconds = call.status === "ENDED" || current_time_ms === null ? call.duration_seconds : secondsBetween(call.started_at, current_time_ms);
+  const hold = readActiveHold(call);
 
   return (
     <header className="flex items-start gap-4 border-b border-line px-6 py-3.5">
@@ -40,6 +45,7 @@ function CallHeader({ call, onClose }: { call: LiveCall; onClose: () => void }) 
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="text-2xl font-bold">{call.customer_name ?? "Unknown caller"}</h2>
           <CallStatusChip status={call.status} />
+          {hold ? <OnHoldChip hold={hold} current_time_ms={current_time_ms} should_show_reason /> : null}
           {call.attention_reason && call.status !== "ENDED" ? <span className="font-semibold text-accent">{call.attention_reason}</span> : null}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-ink-soft">
@@ -70,6 +76,7 @@ export function CallDetailPanel({ call_id, onClose }: CallDetailPanelProps) {
   const call_detail = useCallDetail(call_id);
   const { current_staff_id } = useCurrentStaff();
   const call = call_detail.call;
+  const staff_call_audio = useStaffCallAudio(call_id, call);
 
   useEffect(() => {
     recordMonitoring(call_id, current_staff_id);
@@ -90,8 +97,9 @@ export function CallDetailPanel({ call_id, onClose }: CallDetailPanelProps) {
       <CallHeader call={call} onClose={onClose} />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_19rem] gap-5 p-5">
         <div className="flex min-h-0 flex-col gap-3">
+          {call.status === "ENDED" ? null : <CallAudioBar staff_call_audio={staff_call_audio} />}
           <CallTranscript entries={transcript_entries} />
-          <SupervisorControls call={call} />
+          <SupervisorControls call={call} staff_call_audio={staff_call_audio} />
         </div>
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
           <PanelSection title="AI running summary">

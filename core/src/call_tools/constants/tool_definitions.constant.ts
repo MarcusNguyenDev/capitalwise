@@ -1,3 +1,4 @@
+import { ChatToolDefinition } from '../../ai/types/chat_request.type';
 import { EmptyToolArgsDto } from '../dto/empty_tool_args.dto';
 import { FlagConcernArgsDto } from '../dto/flag_concern_args.dto';
 import { GetFeeHistoryArgsDto } from '../dto/get_fee_history_args.dto';
@@ -9,7 +10,6 @@ import { RequestHumanArgsDto } from '../dto/request_human_args.dto';
 import { UpdateCallInsightArgsDto } from '../dto/update_call_insight_args.dto';
 import {
   JsonSchemaObject,
-  RealtimeToolDefinition,
   ToolDefinition,
   ToolName,
 } from '../types/tool_definition.type';
@@ -24,8 +24,8 @@ const NO_PARAMETERS: JsonSchemaObject = {
 
 const STRING_LIST_SCHEMA = { type: 'array', items: { type: 'string' } };
 
-// The single registry of the model's tools. The voice session config and the
-// server-side dispatcher both read it, so they can never drift apart.
+// The single registry of the model's tools. The voice agent's chat requests
+// and the server-side dispatcher both read it, so they can never drift apart.
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'get_caller_context',
@@ -39,7 +39,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'send_identity_push',
     description:
-      'Send an "Is this you calling the bank right now?" notification to the caller\'s banking app and wait up to 45 seconds for Approve or Deny. Call it before discussing or acting on any account. Tell the caller you have sent it.',
+      'Send an "Is this you calling the bank right now?" notification to the caller\'s banking app and wait up to 45 seconds for Approve or Deny. Call it before discussing or acting on any account. The phone system tells the caller to approve it, so you only wait for the result.',
     parameters: NO_PARAMETERS,
     args_dto: EmptyToolArgsDto,
     requires_verified_identity: false,
@@ -274,11 +274,14 @@ export function findToolDefinition(
   );
 }
 
-export function listRealtimeToolDefinitions(): RealtimeToolDefinition[] {
+// The function-tool format of chat completions (OpenAI-style and Ollama).
+export function listChatToolDefinitions(): ChatToolDefinition[] {
   return TOOL_DEFINITIONS.map((tool_definition) => ({
     type: 'function',
-    name: tool_definition.name,
-    description: tool_definition.description,
-    parameters: tool_definition.parameters,
+    function: {
+      name: tool_definition.name,
+      description: tool_definition.description,
+      parameters: { ...tool_definition.parameters },
+    },
   }));
 }

@@ -11,27 +11,22 @@ export class CallUsageDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  input_text_tokens?: number;
+  llm_input_tokens?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  input_audio_tokens?: number;
+  llm_output_tokens?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  stt_audio_seconds?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  cached_input_tokens?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  output_text_tokens?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  output_audio_tokens?: number;
+  tts_characters?: number;
 }
 
 export class RecordMetricsDto {

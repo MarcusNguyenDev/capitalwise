@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 
 import { fetchCallDetail } from "@/shared/api_client/core_api.client";
+import { applyCallHold } from "@/shared/call_hold/apply_call_hold.util";
 import { describeError } from "@/shared/http/service_request.error";
 import { CALL_EVENTS, LIVE_EVENT } from "@/shared/live/live_event_names.constant";
 import { useLiveSocket } from "@/shared/live/live_socket.provider";
 import { useLiveEvent } from "@/shared/live/use_live_event.hook";
-import type { CallDetail, CallTurn, Intervention, LiveCall, TranscriptDelta } from "@/shared/types/call.type";
+import type { CallDetail, CallHoldEvent, CallTurn, Intervention, LiveCall, TranscriptDelta } from "@/shared/types/call.type";
 
 import type { InProgressLine } from "../transcript/transcript_entry.type";
 
@@ -74,6 +75,12 @@ export function useCallDetail(call_id: string): LiveCallDetail {
   useLiveEvent<LiveCall>(CALL_EVENTS, (updated_call) => {
     if (updated_call.call_id === call_id) {
       setCall(updated_call);
+    }
+  });
+
+  useLiveEvent<CallHoldEvent>(LIVE_EVENT.CALL_HOLD, (hold_event) => {
+    if (hold_event.call_id === call_id) {
+      setCall((current_call) => (current_call ? applyCallHold(current_call, hold_event) : current_call));
     }
   });
 

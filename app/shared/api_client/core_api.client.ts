@@ -11,7 +11,7 @@ import type {
   InterventionType,
   LiveCall,
   SimulatorStatus,
-  TokenUsage,
+  StaffVoiceToken,
   ToolCallResponse,
   VoiceSession,
   VoiceStatus,
@@ -39,8 +39,6 @@ export const recordTurn = (call_id: string, turn: { speaker: "CUSTOMER" | "AI" |
   callCore<CallTurn>({ path: `/calls/${call_id}/turns`, method: "POST", body: turn });
 export const callTool = (call_id: string, tool_name: string, args: Record<string, unknown>) =>
   callCore<ToolCallResponse>({ path: `/calls/${call_id}/tools/${tool_name}`, method: "POST", body: { args } });
-export const recordCallMetrics = (call_id: string, metrics: { usage?: TokenUsage; response_time_ms?: number }) =>
-  callCore<LiveCall>({ path: `/calls/${call_id}/metrics`, method: "POST", body: metrics });
 
 // Supervisor controls
 export const recordIntervention = (
@@ -52,10 +50,14 @@ export const confirmInstructionApplied = (call_id: string, intervention_id: stri
 export const sendStaffMessage = (call_id: string, staff_message: { staff_id: string; text: string }) =>
   callCore<CallTurn>({ path: `/calls/${call_id}/staff_messages`, method: "POST", body: staff_message });
 
-// Voice
+// Voice (call audio runs over LiveKit; these mint room access)
 export const fetchVoiceStatus = () => callCore<VoiceStatus>({ path: "/voice/status" });
+/** The customer's room token. For a LIVE call this also starts the AI voice agent. */
 export const createVoiceSession = (call_id: string) =>
   callCore<VoiceSession>({ path: "/voice/sessions", method: "POST", body: { call_id } });
+/** `can_publish` false listens in; true lets the staff member who took over talk. */
+export const createStaffVoiceToken = (staff_token_request: { call_id: string; staff_id: string; can_publish: boolean }) =>
+  callCore<StaffVoiceToken>({ path: "/voice/staff_tokens", method: "POST", body: staff_token_request });
 
 // Scripted hero calls
 export const fetchScriptedCalls = () => callCore<CallScriptSummary[]>({ path: "/scripted_calls" });

@@ -1,7 +1,12 @@
 # capitalwise — shared infrastructure for local development.
 #
-# Infrastructure the apps share: PostgreSQL (`db`) and Redis (`cache`). To add
-# another service, .claude/skills/create-container/SKILL.md walks through it.
+# Infrastructure the apps share: PostgreSQL (`db`), Redis (`cache`), the
+# LiveKit WebRTC server (`media`) and the self-hosted speech server (`speech`,
+# Speaches: Whisper speech-to-text and Kokoro text-to-speech behind an
+# OpenAI-compatible API). The language model is NOT here: core points at any
+# OpenAI-compatible endpoint (a self-hosted Ollama, vLLM, or a cloud API)
+# through LLM_BASE_URL in core/.env. To add another service,
+# .claude/skills/create-container/SKILL.md walks through it.
 #
 # Every compose file in this repo uses the project name `capitalwise` and the
 # `capitalwise` network, so Docker Desktop and `docker compose ls` list the whole
@@ -65,9 +70,74 @@ services:
     networks:
       - capitalwise
 
+  # LiveKit: carries call audio between the customer phone, the AI voice
+  # agent (core) and staff (listen-in and takeover).
+  media:
+    image: livekit/livekit-server:v1.13
+    restart: unless-stopped
+    command:
+      - --bind=0.0.0.0
+      # The address put in ICE candidates. 127.0.0.1 works for browsers on
+      # this machine and for containers on the `capitalwise` network. Set it
+      # to this machine's LAN IP to use the phone page from a second device.
+      - --node-ip=${MEDIA_NODE_IP:-127.0.0.1}
+    environment:
+      # Must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in core/.env, which
+      # signs the access tokens. The secret needs at least 32 characters.
+      LIVEKIT_KEYS: "${MEDIA_API_KEY:-capitalwise}: ${MEDIA_API_SECRET:-capitalwise_dev_media_secret_change_me_now}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+    ports:
+      # Signalling (WebSocket) for browsers and core.
+      - "${MEDIA_PORT:-7880}:7880"
+      # Media: ICE over TCP as a fallback, and the UDP mux port.
+      - "7881:7881"
+      - "7882:7882/udp"
+    networks:
+      - capitalwise
+
+  # Speaches: OpenAI-compatible /v1/audio/transcriptions and /v1/audio/speech.
+  # CPU image; models are cached in a volume (see `speech-models` below).
+  speech:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: unless-stopped
+    ports:
+      - "${SPEECH_PORT:-8000}:8000"
+    volumes:
+      - speech-models:/home/ubuntu/.cache/huggingface/hub   # → capitalwise_speech-models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - capitalwise
+
+  # One-shot: makes sure the speech models core uses are downloaded. A no-op
+  # once they are cached. Change the ids together with STT_MODEL / TTS_MODEL
+  # in core/.env.
+  speech-models:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: "no"
+    depends_on:
+      speech:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        for model_id in ${SPEECH_MODELS:-Systran/faster-whisper-small.en speaches-ai/Kokoro-82M-v1.0-ONNX}; do
+        curl -fsS -X POST "http://speech:8000/v1/models/$$model_id" && echo; done
+    networks:
+      - capitalwise
+
 volumes:
   db-data:
   cache-data:
+  speech-models:
 
 networks:
   capitalwise:

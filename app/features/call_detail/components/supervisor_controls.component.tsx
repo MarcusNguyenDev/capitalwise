@@ -2,12 +2,13 @@
 
 import type { LiveCall } from "@/shared/types/call.type";
 
+import type { StaffCallAudio } from "../hooks/use_staff_call_audio.hook";
 import { useSupervisorActions } from "../hooks/use_supervisor_actions.hook";
 import { TakeoverReplyBox } from "./takeover_reply_box.component";
 import { WhisperBox } from "./whisper_box.component";
 
 /** Under the transcript: whisper to the AI while it has the call, or talk and type to the customer after a takeover. */
-export function SupervisorControls({ call }: { call: LiveCall }) {
+export function SupervisorControls({ call, staff_call_audio }: { call: LiveCall; staff_call_audio: StaffCallAudio }) {
   const supervisor_actions = useSupervisorActions(call.call_id);
 
   if (call.status === "ENDED") {
@@ -18,8 +19,7 @@ export function SupervisorControls({ call }: { call: LiveCall }) {
     <div className="rounded-xl border border-line bg-white p-4">
       {call.status === "HUMAN_ACTIVE" ? (
         <TakeoverReplyBox
-          call_id={call.call_id}
-          can_use_audio={call.channel !== "SIMULATED"}
+          staff_call_audio={staff_call_audio}
           is_disabled={supervisor_actions.is_busy}
           onSendReply={supervisor_actions.sendReply}
         />

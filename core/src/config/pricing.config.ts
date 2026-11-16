@@ -1,17 +1,15 @@
 import { registerAs } from '@nestjs/config';
 
+// Every price defaults to 0: the speech and language models are self-hosted.
 export const pricingConfig = registerAs('pricing', () => ({
-  audio_input_usd_per_1m: Number(
-    process.env.PRICE_PER_1M_AUDIO_INPUT_USD ?? 32,
+  llm_input_usd_per_1m_tokens: Number(
+    process.env.PRICE_PER_1M_LLM_INPUT_TOKENS_USD ?? 0,
   ),
-  audio_output_usd_per_1m: Number(
-    process.env.PRICE_PER_1M_AUDIO_OUTPUT_USD ?? 64,
+  llm_output_usd_per_1m_tokens: Number(
+    process.env.PRICE_PER_1M_LLM_OUTPUT_TOKENS_USD ?? 0,
   ),
-  text_input_usd_per_1m: Number(process.env.PRICE_PER_1M_TEXT_INPUT_USD ?? 4),
-  text_output_usd_per_1m: Number(
-    process.env.PRICE_PER_1M_TEXT_OUTPUT_USD ?? 16,
-  ),
-  cached_input_usd_per_1m: Number(
-    process.env.PRICE_PER_1M_CACHED_INPUT_USD ?? 0.4,
+  stt_usd_per_minute: Number(process.env.PRICE_PER_MINUTE_STT_USD ?? 0),
+  tts_usd_per_1m_characters: Number(
+    process.env.PRICE_PER_1M_TTS_CHARACTERS_USD ?? 0,
   ),
 }));

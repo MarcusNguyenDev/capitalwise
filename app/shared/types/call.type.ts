@@ -7,12 +7,28 @@ export type TurnSpeaker = "CUSTOMER" | "AI" | "STAFF" | "SYSTEM";
 export type InterventionType = "MONITOR" | "INSTRUCTION" | "TAKEOVER" | "HANDBACK" | "END_CALL";
 export type CallCommandType = "INSTRUCTION" | "TAKEOVER" | "HANDBACK" | "END_CALL" | "STAFF_MESSAGE";
 
-export interface TokenUsage {
-  input_text_tokens?: number;
-  input_audio_tokens?: number;
-  cached_input_tokens?: number;
-  output_text_tokens?: number;
-  output_audio_tokens?: number;
+/** What the self-hosted voice pipeline used on a call; priced by `core` into `estimated_cost_usd`. */
+export interface CallUsage {
+  llm_input_tokens?: number;
+  llm_output_tokens?: number;
+  stt_audio_seconds?: number;
+  tts_characters?: number;
+}
+
+export type CallHoldReason = "CHECKING_SYSTEM" | "WAITING_FOR_APP_APPROVAL";
+
+/** The latest hold state kept on the call, so a page loaded mid-hold can show it. */
+export interface CallHold {
+  is_on_hold: boolean;
+  reason: CallHoldReason;
+  tool_name: string | null;
+  started_at: string;
+}
+
+/** `call.hold`: the AI put the caller on hold while a tool checks the bank, or took them off hold. */
+export interface CallHoldEvent extends CallHold {
+  call_id: string;
+  ended_at: string | null;
 }
 
 export interface CallMetrics {
@@ -22,8 +38,10 @@ export interface CallMetrics {
   time_to_identity_ms?: number | null;
   time_to_resolution_ms?: number | null;
   time_to_human_ms?: number | null;
-  usage?: TokenUsage;
+  usage?: CallUsage;
   estimated_cost_usd?: number | null;
+  hold?: CallHold | null;
+  total_hold_ms?: number | null;
 }
 
 export interface LiveCall {
@@ -97,30 +115,42 @@ export interface CallCommand {
   intervention_id: string | null;
 }
 
-export interface WebrtcSignal {
-  call_id: string;
-  sender: "STAFF" | "PHONE";
-  payload: Record<string, unknown>;
-}
-
 export type ToolCallResponse =
   | { ok: true; result: Record<string, unknown> }
   | { ok: false; error: { code: string; message: string } };
 
-export interface VoiceStatus {
-  is_live_available: boolean;
-  model: string;
-  voice: string;
+export interface VoiceModelStatus {
+  model: string | null;
+  is_reachable: boolean;
 }
 
-export interface VoiceSession {
-  client_secret: string;
-  expires_at: number | string;
-  model: string;
-  voice: string;
-  instructions: string;
-  tools: Record<string, unknown>[];
+export interface VoiceStatus {
+  is_live_available: boolean;
+  unavailable_reason: string | null;
+  /** Browser-facing LiveKit URL; null means ws://<page hostname>:7880. */
+  livekit_url: string | null;
+  /** LiveKit is up: staff can listen and talk even on scripted calls. */
+  is_media_available: boolean;
+  language_model: VoiceModelStatus;
+  speech_to_text: VoiceModelStatus;
+  text_to_speech: VoiceModelStatus & { ai_voice: string | null; staff_voice: string | null };
 }
+
+/** Everything a browser needs to join one call's LiveKit room. */
+export interface CallRoomAccess {
+  room_name: string;
+  livekit_url: string | null;
+  token: string;
+  identity: string;
+}
+
+/** The customer's access to the call room. For a LIVE call, creating it also starts the AI voice agent. */
+export interface VoiceSession extends CallRoomAccess {
+  identity: "customer";
+}
+
+/** A staff member's access to the call room: listen-in, or talk after a takeover. */
+export type StaffVoiceToken = CallRoomAccess;
 
 export type ScriptStep =
   | { type: "ai"; text: string }
