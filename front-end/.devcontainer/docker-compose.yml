@@ -1,0 +1,11 @@
+# Dev container overlay on top of ../docker-compose.yml.
+#
+# The base file already mounts the repo at /workspaces and sets working_dir, so
+# the only override needed is to stop the dev server from starting — VS Code
+# attaches and you run it yourself from an integrated terminal.
+
+name: capitalwise
+
+services:
+  front-end:
+    command: sleep infinity

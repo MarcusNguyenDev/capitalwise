@@ -1,0 +1,72 @@
+# capitalwise — shared infrastructure for local development.
+#
+# Infrastructure the apps share: PostgreSQL (`db`) and Redis (`cache`). To add
+# another service, .claude/skills/create-container/SKILL.md walks through it.
+#
+# Every compose file in this repo uses the project name `capitalwise` and the
+# `capitalwise` network, so Docker Desktop and `docker compose ls` list the whole
+# stack as one group, and nothing collides with other projects on this machine.
+# Whichever file starts first creates the network; the rest join it.
+#
+#   docker compose up -d          # start infra
+#   docker compose down           # stop  infra (volumes are kept)
+#   docker compose down -v        # stop  infra and wipe the data
+#
+# Credentials come from .env beside this file (see .env.example).
+
+name: capitalwise
+
+services:
+  # Named after its ROLE, not the product, so swapping the product changes
+  # nothing that depends on it.
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-capitalwise}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-capitalwise_dev}
+      POSTGRES_DB: ${DB_NAME:-capitalwise}
+    ports:
+      # Host side only, and off the default so a local install doesn't clash.
+      # Other containers reach it in-network as `db:5432`.
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      # postgres:18+ keeps its data in a versioned subdirectory, so the volume
+      # mounts one level up from the old /var/lib/postgresql/data.
+      - db-data:/var/lib/postgresql   # → capitalwise_db-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+  cache:
+    image: redis:8
+    restart: unless-stopped
+    # Password-protected and persisted (append-only file in /data).
+    command: ["redis-server", "--requirepass", "${CACHE_PASSWORD:-capitalwise_dev}", "--appendonly", "yes"]
+    environment:
+      REDISCLI_AUTH: ${CACHE_PASSWORD:-capitalwise_dev}
+    ports:
+      # Other containers reach it in-network as `cache:6379`.
+      - "${CACHE_PORT:-6380}:6379"
+    volumes:
+      - cache-data:/data              # → capitalwise_cache-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+volumes:
+  db-data:
+  cache-data:
+
+networks:
+  capitalwise:
+    name: capitalwise
+    driver: bridge
