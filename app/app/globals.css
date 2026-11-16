@@ -1,26 +1,121 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Clean banking look: white background, one red accent, generous spacing and
+ * large type so the screens read well on a 1920x1080 recording.
+ */
+@theme {
+  --color-accent: #d6002a;
+  --color-accent-dark: #a80021;
+  --color-accent-soft: #fdeef1;
+  --color-ink: #16181d;
+  --color-ink-soft: #4a5160;
+  --color-ink-faint: #8a91a0;
+  --color-line: #e6e8ec;
+  --color-surface: #f6f7f9;
+  --color-positive: #0f7b4f;
+  --color-positive-soft: #e6f5ee;
+  --color-warning: #b45f06;
+  --color-warning-soft: #fdf3e1;
+  --color-info: #1d5fd1;
+  --color-info-soft: #e8f0fd;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --animate-slide-in: slide-in 0.35s ease-out both;
+  --animate-slide-down: slide-down 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-highlight: highlight 1.6s ease-out both;
+  --animate-attention: attention 1.4s ease-in-out infinite;
+  --animate-ring: ring 1.2s ease-in-out infinite;
+
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Flash a changed value so a viewer of the recording notices it. */
+  @keyframes highlight {
+    0% {
+      background-color: #ffe9a8;
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  /* Tiles that need a human pulse until someone picks them up. */
+  @keyframes attention {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(214 0 42 / 0.45);
+    }
+    50% {
+      box-shadow: 0 0 0 10px rgb(214 0 42 / 0);
+    }
+  }
+
+  @keyframes ring {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.12);
+      opacity: 0.7;
+    }
   }
 }
 
+html {
+  font-size: 17px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button:not(:disabled),
+[role="button"],
+select,
+summary {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

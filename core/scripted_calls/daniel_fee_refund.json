@@ -1,0 +1,35 @@
+{
+  "script_id": "daniel_fee_refund",
+  "title": "Daniel: overdrawn fee refund",
+  "customer_id": "CUS-1002",
+  "caller_number": "+61491570157",
+  "steps": [
+    { "type": "ai", "text": "Hi, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "ai", "text": "Hi Daniel, how can I help you today?" },
+    { "type": "customer", "text": "G'day. I've been charged a fifteen dollar overdrawn fee and I don't reckon that's fair. My insurance came out the day before my pay went in." },
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEGATIVE", "summary": "Daniel is unhappy about a $15 overdrawn fee caused by a direct debit the day before payday." },
+    { "type": "ai", "text": "That's frustrating, let's take a look. I've sent a notification to your banking app. Can you tap Approve for me?" },
+    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
+    { "type": "ai", "text": "Thanks Daniel. One moment, I'm just checking your fees." },
+    { "type": "tool", "tool_name": "get_fee_history", "args": {} },
+    { "type": "ai", "text": "I can see it: a fifteen dollar overdrawn fee from two days ago, and it's the first fee you've had with us. What happened there?" },
+    { "type": "customer", "text": "I moved some money into savings and forgot the insurance direct debit was due. It tipped me over by a few dollars, and my pay landed the next morning." },
+    { "type": "ai", "text": "Thanks, that makes sense. One moment while I put a refund request through for you." },
+    {
+      "type": "tool",
+      "tool_name": "propose_action",
+      "args": {
+        "action_code": "REFUND_FEE",
+        "params": { "fee_txn_id": "TXN-F1002" },
+        "summary": "Daniel was charged a $15 overdrawn fee after an insurance direct debit came out the day before his salary arrived. It is his first fee and he is asking for it to be refunded.",
+        "customer_statement": "I moved some money into savings and forgot the insurance direct debit was due. It tipped me over by a few dollars, and my pay landed the next morning."
+      }
+    },
+    { "type": "ai", "text": "That's lodged, and your case number is {{propose_action.case_number}}. {{propose_action.handled_by.name}} from our team is reviewing it, and you'll hear back {{propose_action.expected_timing}}." },
+    { "type": "ai", "text": "I can't promise the outcome, but I've noted it's your first fee in more than nine years with us. We'll text you as soon as it's decided." },
+    { "type": "customer", "text": "Fair enough. Appreciate that." },
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "POSITIVE", "summary": "Refund request for the $15 overdrawn fee lodged for staff review. Daniel knows the case number and timing." },
+    { "type": "ai", "text": "No worries, Daniel. Have a good one." }
+  ]
+}

@@ -4,7 +4,7 @@
 # naming rules in .claude/skills/create-container/SKILL.md. The API reaches
 # PostgreSQL and Redis from the root docker-compose.yml, so start that too.
 #
-#   docker compose up -d                # start the API
+#   docker compose up -d                # start core
 #   docker compose logs -f core         # follow the logs
 #   docker compose down                 # stop it
 
@@ -32,8 +32,12 @@ services:
         required: false
     environment:
       NODE_ENV: development
-      # The container port is fixed; API_PORT moves the host side only.
+      # The container port is fixed; CORE_PORT in .env moves the host side only,
+      # so it is pinned here for the process inside the container.
       PORT: "3001"
+      CORE_PORT: "3001"
+      # The api service, reached in-network.
+      API_INTERNAL_URL: http://api:3002
       # In-network addresses — these win over the host ports in ../.env.
       DB_HOST: db
       DB_PORT: "5432"
@@ -43,8 +47,8 @@ services:
       TSC_WATCHFILE: DynamicPriorityPolling
       TSC_WATCHDIRECTORY: DynamicPriorityPolling
     ports:
-      - "${API_PORT:-3001}:3001"
-      - "${API_DEBUG_PORT:-9229}:9229"
+      - "${CORE_PORT:-3001}:3001"
+      - "${CORE_DEBUG_PORT:-9229}:9229"
     volumes:
       # The repo root, so `.git` is reachable from inside the container.
       - ..:/workspaces:cached

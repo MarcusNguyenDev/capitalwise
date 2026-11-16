@@ -1,0 +1,26 @@
+{
+  "script_id": "sarah_lost_card",
+  "title": "Sarah: lost card",
+  "customer_id": "CUS-1001",
+  "caller_number": "+61491570156",
+  "steps": [
+    { "type": "ai", "text": "Hi, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "ai", "text": "Hi Sarah, how can I help you today?" },
+    { "type": "customer", "text": "Hi. I think I've lost my debit card. I had it at the gym last night and now I can't find it anywhere." },
+    { "type": "insight", "intent": "Lost card", "sentiment": "NEGATIVE", "summary": "Sarah has lost her debit card and is worried about it being used." },
+    { "type": "ai", "text": "Oh no, that's stressful. Let's get it sorted. I've just sent a notification to your banking app, so tap Approve and I'll know it's you." },
+    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
+    { "type": "ai", "text": "Thanks Sarah, that's confirmed. One moment, I'm just finding your card." },
+    { "type": "tool", "tool_name": "get_customer_overview", "args": {} },
+    { "type": "ai", "text": "I can see your debit card ending in four eight two one. I'll put a temporary lock on it right now." },
+    { "type": "tool", "tool_name": "lock_card", "args": { "card_id": "CRD-10011" } },
+    { "type": "ai", "text": "Done. Your card's locked, so nobody can use it. It's only a temporary lock, and you can undo it in the app if the card turns up." },
+    { "type": "ai", "text": "The last transaction was eight dollars fifty at Pulse Gym Cafe, yesterday at six forty-two pm. Does that sound like you?" },
+    { "type": "customer", "text": "Yes, that was me. A coffee after my class." },
+    { "type": "insight", "intent": "Lost card", "sentiment": "POSITIVE", "summary": "Card ending 4821 temporarily locked. Sarah confirmed the last transaction was hers." },
+    { "type": "ai", "text": "Perfect, so nothing unfamiliar. I've sent you a text to confirm the lock, and your reference is {{lock_card.case_number}}. Is there anything else I can help with?" },
+    { "type": "customer", "text": "No, that's everything. That was so easy, thank you." },
+    { "type": "ai", "text": "You're very welcome, Sarah. Take care." }
+  ]
+}

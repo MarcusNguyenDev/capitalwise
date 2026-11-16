@@ -1,0 +1,35 @@
+{
+  "script_id": "fee_refund",
+  "title": "Ben: overdrawn fee refund",
+  "customer_id": "CUS-3004",
+  "caller_number": "+61491575789",
+  "steps": [
+    { "type": "ai", "text": "Hi, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "ai", "text": "Hi Ben, how can I help you today?" },
+    { "type": "customer", "text": "Hey. I got a fifteen dollar fee for going overdrawn, but it was only a couple of bucks for a few hours. Any chance of getting that back?" },
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEUTRAL", "summary": "Ben is asking for a $15 overdrawn fee to be refunded." },
+    { "type": "ai", "text": "Let's have a look. I've sent a notification to your banking app. Can you tap Approve for me?" },
+    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
+    { "type": "ai", "text": "Thanks Ben. One moment, I'm just checking your fees." },
+    { "type": "tool", "tool_name": "get_fee_history", "args": {} },
+    { "type": "ai", "text": "I can see the fifteen dollar overdrawn fee from yesterday. What happened there?" },
+    { "type": "customer", "text": "My gym membership came out before my pay hit. I topped it up as soon as I saw it." },
+    { "type": "ai", "text": "Thanks, that helps. One moment while I put a refund request through for you." },
+    {
+      "type": "tool",
+      "tool_name": "propose_action",
+      "args": {
+        "action_code": "REFUND_FEE",
+        "params": { "fee_txn_id": "TXN-F3004" },
+        "summary": "Ben was charged a $15 overdrawn fee when a gym membership payment came out before his pay. He topped the account up the same day and is asking for a refund.",
+        "customer_statement": "My gym membership came out before my pay hit. I topped it up as soon as I saw it."
+      }
+    },
+    { "type": "ai", "text": "That's lodged as {{propose_action.case_number|a refund request}}. {{propose_action.handled_by.name|One of our team}} is reviewing it, and you'll hear back {{propose_action.expected_timing|soon}}." },
+    { "type": "ai", "text": "I can't promise the outcome, but we'll text you as soon as it's decided." },
+    { "type": "customer", "text": "Sweet, cheers for that." },
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "POSITIVE", "summary": "Refund request for the $15 overdrawn fee lodged for staff review." },
+    { "type": "ai", "text": "No worries, Ben. Have a good one." }
+  ]
+}

@@ -47,6 +47,10 @@ RUN bun run build
 FROM base AS production
 
 COPY --from=builder /api/dist ./dist
+# Content read at runtime: the agent prompt, simulator scripts and hero calls.
+COPY --from=builder /api/prompts ./prompts
+COPY --from=builder /api/simulations ./simulations
+COPY --from=builder /api/scripted_calls ./scripted_calls
 COPY --from=builder /api/package.json ./package.json
 COPY --from=builder /api/tsconfig.json ./tsconfig.json
 # --frozen-lockfile has nothing to freeze against without this.

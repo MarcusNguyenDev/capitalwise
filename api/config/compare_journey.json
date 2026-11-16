@@ -1,0 +1,70 @@
+{
+  "legacy_journey": {
+    "title": "Typical phone banking today",
+    "outcome": "Deflected. Told to download the app to reach a person; the problem is not resolved.",
+    "steps": [
+      {
+        "label": "Automated menu",
+        "detail": "\"Press 1 for accounts, press 2 for cards...\" The caller listens to every option and guesses which one fits.",
+        "duration_seconds": 45
+      },
+      {
+        "label": "Enter your account number",
+        "detail": "The caller has to find their account number and key it in on the phone.",
+        "duration_seconds": 40
+      },
+      {
+        "label": "Enter your passkey",
+        "detail": "A passkey most customers do not remember, keyed in on the phone.",
+        "duration_seconds": 30
+      },
+      {
+        "label": "Hold queue",
+        "detail": "Hold music while waiting for someone to pick up.",
+        "duration_seconds": 420
+      },
+      {
+        "label": "Told to download the app for a person",
+        "detail": "Asking for a specialist ends with \"please download the app and press the support button\".",
+        "duration_seconds": 35
+      }
+    ]
+  },
+  "ai_journey": {
+    "title": "With an AI specialist",
+    "outcome": "Resolved on the call, or handed to a human specialist who already has the full context.",
+    "steps": [
+      {
+        "label": "Answered instantly",
+        "detail": "No menu. The AI specialist picks up and starts talking.",
+        "duration_seconds": 1,
+        "measured_metric": "avg_response_ms"
+      },
+      {
+        "label": "Caller ID recognised",
+        "detail": "The caller is greeted by name. No account number is asked for.",
+        "duration_seconds": 3
+      },
+      {
+        "label": "Identity confirmed by app push",
+        "detail": "One tap on a notification in the banking app. No passkey, and no voice-only identity.",
+        "duration_seconds": 38,
+        "measured_metric": "time_to_identity_ms"
+      },
+      {
+        "label": "Resolved in conversation",
+        "detail": "The AI proposes, policy decides: done straight away, or a case goes to staff with the evidence attached.",
+        "duration_seconds": 100,
+        "measured_metric": "time_to_resolution_ms",
+        "subtract_metric": "time_to_identity_ms"
+      },
+      {
+        "label": "Or: a human specialist joins with full context",
+        "detail": "Asking for a person gets a person, routed by skill, who can already see the transcript and the case.",
+        "duration_seconds": 45,
+        "measured_metric": "time_to_human_ms",
+        "is_optional_path": true
+      }
+    ]
+  }
+}

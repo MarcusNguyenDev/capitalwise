@@ -1,0 +1,44 @@
+{
+  "script_id": "margaret_scam",
+  "title": "Margaret: held payment (scam)",
+  "customer_id": "CUS-1004",
+  "caller_number": "+61491570159",
+  "steps": [
+    { "type": "ai", "text": "Hello, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "ai", "text": "Hello Margaret, how can I help you today?" },
+    { "type": "customer", "text": "Hello dear. I sent a payment this morning, eighteen thousand five hundred dollars, and it hasn't gone through. I need it released straight away, please." },
+    { "type": "insight", "intent": "Held payment", "sentiment": "NEGATIVE", "summary": "Margaret wants an $18,500 payment released urgently." },
+    { "type": "ai", "text": "I can look into that with you, Margaret. I've sent a notification to your banking app. Could you tap Approve for me?" },
+    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
+    { "type": "ai", "text": "Thank you. One moment, I'm just checking that payment for you." },
+    { "type": "tool", "tool_name": "get_held_payments", "args": {} },
+    { "type": "ai", "text": "I can see it. The eighteen thousand five hundred dollars is on hold for a security review. Can you tell me a little about what the payment is for?" },
+    { "type": "customer", "text": "The bank's security team rang me. They're on my other phone right now. They said my account's been hacked and I have to move my money to a safe account today. It's urgent, and they said not to tell anyone." },
+    { "type": "ai", "text": "Thank you for telling me, Margaret. Just one moment." },
+    {
+      "type": "tool",
+      "tool_name": "flag_concern",
+      "args": {
+        "type": "SCAM_COACHING",
+        "quotes": [
+          "The bank's security team rang me. They're on my other phone right now.",
+          "I have to move my money to a safe account today.",
+          "It's urgent, and they said not to tell anyone."
+        ],
+        "signals": ["TOLD_TO_MOVE_MONEY", "SAFE_ACCOUNT", "URGENCY", "SECRECY", "THIRD_PARTY_ON_LINE"]
+      }
+    },
+    { "type": "insight", "intent": "Held payment, possible scam", "sentiment": "DISTRESSED", "summary": "Margaret was told by a caller claiming to be bank security to move $18,500 to a \"safe account\", urgently and in secret. The payment stays on hold." },
+    { "type": "ai", "text": "Margaret, your money is safe right where it is, and that payment will stay on hold for now. {{bank_name}} will never ask you to move money to keep it safe." },
+    { "type": "ai", "text": "{{flag_concern.specialist_name}} from our fraud team will speak with you straight away, on this call. Until then, please don't share any codes or let anyone control your phone or computer." },
+    { "type": "customer", "text": "Oh. But they said it was urgent. They sounded so official." },
+    { "type": "ai", "text": "I understand, and you've done nothing wrong by calling us. It's quite alright to hang up on the other call. I'll stay right here with you until {{flag_concern.specialist_name}} joins." },
+    {
+      "type": "await_takeover",
+      "timeout_seconds": 45,
+      "ai_if_timeout": "Thanks for your patience, Margaret. {{flag_concern.specialist_name}} is just finishing another call and will ring you straight back on this number. Your payment stays safely on hold, and your case number is {{flag_concern.case_number}}."
+    },
+    { "type": "ai", "text": "Thanks, Margaret. Your payment stays safely on hold and your savings haven't moved. If anyone rings asking you to move money, hang up and call the number on the back of your card. Take care." }
+  ]
+}

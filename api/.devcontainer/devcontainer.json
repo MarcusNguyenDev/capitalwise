@@ -1,0 +1,50 @@
+// For format details, see https://aka.ms/devcontainer.json.
+{
+  "name": "capitalwise API (NestJS)",
+
+  // ../docker-compose.yml is the *primary* file, so relative paths inside both
+  // files resolve against api/.
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "api",
+
+  // The repo root is mounted at /workspaces, so `.git` resolves from here and
+  // VS Code's Source Control panel works.
+  "workspaceFolder": "/workspaces/api",
+
+  // Runs on the host, from api/, before the container starts: bring up
+  // PostgreSQL and Redis from the root compose file so the API can reach them.
+  "initializeCommand": "docker compose -f ../docker-compose.yml up -d",
+
+  // uid 1000, which is what the host's files map to — no chown dance needed,
+  // and nothing in .git ends up owned by root.
+  "remoteUser": "root",
+
+  // Closing this dev container must not stop the infrastructure the app
+  // dev container is also using.
+  "shutdownAction": "none",
+
+  "forwardPorts": [3002, 9229],
+  "portsAttributes": {
+    "3002": { "label": "NestJS API", "onAutoForward": "notify" },
+    "9229": { "label": "Node debugger", "onAutoForward": "silent" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "github.copilot-chat",
+        "ecmel.vscode-html-css",
+        "zignd.html-css-class-completion",
+        "xabikos.javascriptsnippets",
+        "firsttris.vscode-jest-runner",
+        "yzhang.markdown-all-in-one",
+        "bradlc.vscode-tailwindcss",
+        "gruntfuggly.todo-tree",
+        "ms-azuretools.vscode-docker",
+        "docker.docker"
+      ]
+    }
+  }
+}

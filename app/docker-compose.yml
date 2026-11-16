@@ -35,11 +35,11 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       # File watching over a bind mount needs polling on macOS/Windows.
       WATCHPACK_POLLING: "true"
-      # Browser-facing, so localhost rather than the in-network `core:3001` —
-      # the request is made by the visitor's machine, not by this container.
-      # Production leaves this empty and calls /api on its own origin; in dev
-      # the API is on another port, so same-origin is not available.
-      API_URL: ${API_URL:-http://localhost:3001}
+      # Browser-facing addresses of the two back-end services. Empty means
+      # "same host as the page, ports 3002 (api) and 3001 (core)", which also
+      # works when the phone page is opened from a second device.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+      NEXT_PUBLIC_CORE_URL: ${NEXT_PUBLIC_CORE_URL:-}
     ports:
       - "${WEB_PORT:-3000}:3000"
     volumes:

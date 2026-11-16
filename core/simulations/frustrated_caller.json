@@ -1,0 +1,34 @@
+{
+  "script_id": "frustrated_caller",
+  "title": "Jack: charged twice, wants a person",
+  "customer_id": "CUS-3001",
+  "caller_number": "+61491574118",
+  "steps": [
+    { "type": "ai", "text": "Hi, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "ai", "text": "Hi Jack, how can I help you today?" },
+    { "type": "customer", "text": "Coastline Hardware has charged me twice. Two hundred and forty-nine dollars, twice, for the one drill." },
+    { "type": "insight", "intent": "Duplicate card charge", "sentiment": "NEGATIVE", "summary": "Jack says Coastline Hardware charged him $249 twice." },
+    { "type": "ai", "text": "That's not on, let's have a look. I've sent a notification to your banking app. Can you tap Approve for me?" },
+    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
+    { "type": "ai", "text": "Thanks Jack. One moment, I'm just checking your recent transactions." },
+    { "type": "tool", "tool_name": "get_customer_overview", "args": {} },
+    { "type": "tool", "tool_name": "get_recent_transactions", "args": { "account_id": "ACC-30011", "hours": 72 } },
+    { "type": "ai", "text": "I can see both charges from Coastline Hardware, two hundred and forty-nine dollars each. One has gone through and the other is still pending." },
+    { "type": "ai", "text": "A pending duplicate often drops off by itself within a few business days, but I can't confirm that for this one yet." },
+    { "type": "customer", "text": "A few days? No. I've been through this before and it took weeks. I want to talk to a real person, now." },
+    { "type": "insight", "intent": "Duplicate card charge", "sentiment": "NEGATIVE", "summary": "Jack is frustrated about a duplicate $249 charge from Coastline Hardware (one posted, one pending) and has asked for a person." },
+    { "type": "ai", "text": "Of course, Jack. One moment, I'm getting someone for you now." },
+    { "type": "tool", "tool_name": "request_human", "args": { "reason": "Charged twice by Coastline Hardware ($249 posted and $249 pending). Frustrated and wants to speak with a person." } },
+    { "type": "ai", "text": "{{request_human.specialist_name|A specialist}} from our team will join us in about {{request_human.expected_wait_minutes|2}} minutes, and they'll have everything we've covered. Your reference is {{request_human.case_number|coming through by text}}." },
+    { "type": "customer", "text": "Fine. I'll wait." },
+    { "type": "ai", "text": "Thanks for bearing with me. I've noted both charges and the times, so you won't have to repeat yourself." },
+    {
+      "type": "await_takeover",
+      "timeout_seconds": 120,
+      "ai_if_timeout": "I'm sorry, Jack, our specialist is still tied up. Your callback case {{request_human.case_number|is open}} has everything noted, and {{request_human.specialist_name|a specialist}} will ring you back on this number as soon as they're free."
+    },
+    { "type": "customer", "text": "Alright. Thanks." },
+    { "type": "ai", "text": "Thanks for your patience, Jack. Take care." }
+  ]
+}
