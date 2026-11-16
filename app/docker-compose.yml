@@ -1,24 +1,24 @@
-# capitalwise front-end — development stack.
+# capitalwise app — development stack.
 #
 # Part of the `capitalwise` compose project. Start order does not matter — see the
 # naming rules in .claude/skills/create-container/SKILL.md.
 #
 #   docker compose up -d                 # start the dev server
-#   docker compose logs -f front-end     # follow the logs
+#   docker compose logs -f app           # follow the logs
 #   docker compose down                  # stop it
 
 name: capitalwise
 
 services:
-  front-end:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
       target: development
-    image: capitalwise/front-end:dev
+    image: capitalwise/app:dev
     restart: unless-stopped
-    # The whole repo is mounted, so work happens in the front-end subdirectory.
-    working_dir: /workspaces/front-end
+    # The whole repo is mounted, so work happens in the app subdirectory.
+    working_dir: /workspaces/app
     # node_modules lives in a named volume, so it is empty on a fresh start.
     command: sh -c "bun install && exec bun run dev"
     environment:
@@ -35,7 +35,7 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       # File watching over a bind mount needs polling on macOS/Windows.
       WATCHPACK_POLLING: "true"
-      # Browser-facing, so localhost rather than the in-network `back-end:3001` —
+      # Browser-facing, so localhost rather than the in-network `core:3001` —
       # the request is made by the visitor's machine, not by this container.
       # Production leaves this empty and calls /api on its own origin; in dev
       # the API is on another port, so same-origin is not available.
@@ -46,14 +46,14 @@ services:
       # The repo root, so `.git` is reachable from inside the container.
       - ..:/workspaces:cached
       # Keep the Linux-built dependencies and build cache out of the bind mount.
-      - front-end-node-modules:/workspaces/front-end/node_modules
-      - front-end-next:/workspaces/front-end/.next
+      - app-node-modules:/workspaces/app/node_modules
+      - app-next:/workspaces/app/.next
     networks:
       - capitalwise
 
 volumes:
-  front-end-node-modules:
-  front-end-next:
+  app-node-modules:
+  app-next:
 
 networks:
   capitalwise:

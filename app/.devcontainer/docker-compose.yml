@@ -7,5 +7,5 @@
 name: capitalwise
 
 services:
-  front-end:
+  app:
     command: sleep infinity

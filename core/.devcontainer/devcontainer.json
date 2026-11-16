@@ -1,17 +1,17 @@
 // For format details, see https://aka.ms/devcontainer.json.
 {
-  "name": "capitalwise Back-end (NestJS)",
+  "name": "capitalwise Core (NestJS)",
 
   // ../docker-compose.yml is the *primary* file, so relative paths inside both
-  // files resolve against back-end/.
+  // files resolve against core/.
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
-  "service": "back-end",
+  "service": "core",
 
   // The repo root is mounted at /workspaces, so `.git` resolves from here and
   // VS Code's Source Control panel works.
-  "workspaceFolder": "/workspaces/back-end",
+  "workspaceFolder": "/workspaces/core",
 
-  // Runs on the host, from back-end/, before the container starts: bring up
+  // Runs on the host, from core/, before the container starts: bring up
   // PostgreSQL and Redis from the root compose file so the API can reach them.
   "initializeCommand": "docker compose -f ../docker-compose.yml up -d",
 
@@ -19,7 +19,7 @@
   // and nothing in .git ends up owned by root.
   "remoteUser": "root",
 
-  // Closing this dev container must not stop the infrastructure the front-end
+  // Closing this dev container must not stop the infrastructure the app
   // dev container is also using.
   "shutdownAction": "none",
 

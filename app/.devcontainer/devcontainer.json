@@ -1,21 +1,21 @@
 // For format details, see https://aka.ms/devcontainer.json.
 {
-  "name": "capitalwise Front-end (Next.js)",
+  "name": "capitalwise App (Next.js)",
 
   // ../docker-compose.yml is the *primary* file, so relative paths inside both
-  // files resolve against front-end/.
+  // files resolve against app/.
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
-  "service": "front-end",
+  "service": "app",
 
   // The repo root is mounted at /workspaces, so `.git` resolves from here and
   // VS Code's Source Control panel works.
-  "workspaceFolder": "/workspaces/front-end",
+  "workspaceFolder": "/workspaces/app",
 
   // uid 1000, which is what the host's files map to — no chown dance needed,
   // and nothing in .git ends up owned by root.
   "remoteUser": "root",
 
-  // Closing this dev container must not stop the infrastructure the back-end
+  // Closing this dev container must not stop the infrastructure the core
   // dev container is also using.
   "shutdownAction": "none",
 

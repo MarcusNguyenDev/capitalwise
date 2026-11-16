@@ -21,11 +21,11 @@ FROM base AS development
 # The repo root is bind-mounted at /workspaces; pre-create the node_modules
 # mount point so the named volume comes up owned by `node`, and let git accept
 # a worktree that belongs to the host user.
-RUN mkdir -p /workspaces/back-end/node_modules \
+RUN mkdir -p /workspaces/core/node_modules \
     && chown -R node:node /workspaces \
     && git config --system --add safe.directory /workspaces
 
-WORKDIR /workspaces/back-end
+WORKDIR /workspaces/core
 USER node
 EXPOSE 3001
 CMD ["bun", "run", "dev"]

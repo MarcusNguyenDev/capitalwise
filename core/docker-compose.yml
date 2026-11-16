@@ -1,29 +1,29 @@
-# capitalwise back-end — development stack.
+# capitalwise core — development stack.
 #
 # Part of the `capitalwise` compose project. Start order does not matter — see the
 # naming rules in .claude/skills/create-container/SKILL.md. The API reaches
 # PostgreSQL and Redis from the root docker-compose.yml, so start that too.
 #
 #   docker compose up -d                # start the API
-#   docker compose logs -f back-end     # follow the logs
+#   docker compose logs -f core         # follow the logs
 #   docker compose down                 # stop it
 
 name: capitalwise
 
 services:
-  back-end:
+  core:
     build:
       context: .
       dockerfile: Dockerfile
       target: development
-    image: capitalwise/back-end:dev
+    image: capitalwise/core:dev
     restart: unless-stopped
-    # The whole repo is mounted, so work happens in the back-end subdirectory.
-    working_dir: /workspaces/back-end
+    # The whole repo is mounted, so work happens in the core subdirectory.
+    working_dir: /workspaces/core
     # node_modules lives in a named volume, so it is empty on a fresh start.
     command: sh -c "bun install && exec bun run dev"
     # The root .env carries the infrastructure credentials (DB_*, CACHE_*), so
-    # they are defined once; back-end/.env carries the API's own settings.
+    # they are defined once; core/.env carries the API's own settings.
     # Missing files are fine — the app falls back to its defaults.
     env_file:
       - path: ../.env
@@ -49,12 +49,12 @@ services:
       # The repo root, so `.git` is reachable from inside the container.
       - ..:/workspaces:cached
       # Keep the Linux-built dependencies out of the host bind mount.
-      - back-end-node-modules:/workspaces/back-end/node_modules
+      - core-node-modules:/workspaces/core/node_modules
     networks:
       - capitalwise
 
 volumes:
-  back-end-node-modules:
+  core-node-modules:
 
 networks:
   capitalwise:
