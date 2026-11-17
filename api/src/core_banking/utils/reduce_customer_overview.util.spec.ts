@@ -1,13 +1,13 @@
 import { CustomerOverview } from '../types/bank_records.type';
 import { reduceCustomerOverview } from './reduce_customer_overview.util';
 
-const RILEY_OVERVIEW = {
+const MARCUS_OVERVIEW = {
   customer_id: 'CUS-1007',
-  first_name: 'Riley',
-  last_name: 'Hughes',
-  full_name: 'Riley Hughes',
+  first_name: 'Marcus',
+  last_name: 'Edward',
+  full_name: 'Marcus Edward',
   mobile_phone: '+61491576801',
-  email: 'riley.hughes@example.com',
+  email: 'marcus.edward@example.com',
   suburb: 'Elanora',
   state: 'QLD',
   customer_since: '2020-08-17',
@@ -48,9 +48,9 @@ const RILEY_OVERVIEW = {
 
 describe('reduceCustomerOverview (level 1)', () => {
   it('keeps only what a level 1 caller may hear about', () => {
-    expect(reduceCustomerOverview(RILEY_OVERVIEW, 1)).toEqual({
+    expect(reduceCustomerOverview(MARCUS_OVERVIEW, 1)).toEqual({
       customer_id: 'CUS-1007',
-      first_name: 'Riley',
+      first_name: 'Marcus',
       identity_level: 1,
       is_reduced_view: true,
       accounts: [
@@ -74,7 +74,7 @@ describe('reduceCustomerOverview (level 1)', () => {
 
   it('never carries level 2 answers', () => {
     const reduced_text = JSON.stringify(
-      reduceCustomerOverview(RILEY_OVERVIEW, 1),
+      reduceCustomerOverview(MARCUS_OVERVIEW, 1),
     );
     expect(reduced_text).not.toMatch(
       /6142|2154|balance|limit|Bali|email|mobile|flags|preferences/,

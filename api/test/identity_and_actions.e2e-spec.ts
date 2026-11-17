@@ -47,9 +47,9 @@ const TOM: TestCaller = {
   caller_number: '+61491570110',
   identity_level: 2,
 };
-const RILEY: TestCaller = {
+const MARCUS: TestCaller = {
   customer_id: 'CUS-1007',
-  customer_name: 'Riley Hughes',
+  customer_name: 'Marcus Edward',
   caller_number: '+61491576801',
   identity_level: 2,
 };
@@ -652,7 +652,7 @@ describe('identity and self-service actions (e2e)', () => {
     });
   });
 
-  describe('Riley: dispute, payment arrangement and preferences', () => {
+  describe('Marcus: dispute, payment arrangement and preferences', () => {
     let call_id: string;
 
     async function readEverydayBalance(): Promise<number> {
@@ -663,7 +663,7 @@ describe('identity and self-service actions (e2e)', () => {
     }
 
     it('lodges the Northshore Electronics duplicate with a provisional credit (RD-3)', async () => {
-      call_id = await startCall(RILEY);
+      call_id = await startCall(MARCUS);
       const balance_before = await readEverydayBalance();
       const response = await propose(call_id, 'RAISE_DISPUTE', {
         txn_id: 'TXN-P1007B',
@@ -773,7 +773,7 @@ describe('identity and self-service actions (e2e)', () => {
       expect(wrong_account.body.error_code).toBe('ACCOUNT_NOT_ELIGIBLE');
       // A fresh call: on this one ACC-10074 already has an arrangement case.
       const bad_weeks = await propose(
-        await startCall(RILEY),
+        await startCall(MARCUS),
         'PAYMENT_ARRANGEMENT',
         { account_id: 'ACC-10074', weeks: 20 },
       ).expect(400);

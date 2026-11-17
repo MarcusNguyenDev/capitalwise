@@ -887,7 +887,7 @@ describe('VoiceAgentSession', () => {
 
   it('waits for the answer after a question asked alongside a silent tool, instead of asking it again', async () => {
     harness = buildHarness();
-    const question = "Thanks, Riley. What's your date of birth?";
+    const question = "Thanks, Marcus. What's your date of birth?";
     harness.scripted_replies.push(
       {
         events: [
@@ -899,7 +899,7 @@ describe('VoiceAgentSession', () => {
     );
     await harness.joinAndWaitForGreeting();
 
-    harness.sayToAgent('My name is Riley Hughes. I lost my card.');
+    harness.sayToAgent('My name is Marcus Edward. I lost my card.');
     await waitFor(
       () => harness.recorded_turns.some((turn) => turn.text === question),
       'the date of birth question',

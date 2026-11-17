@@ -141,10 +141,10 @@ On the dashboard, open the call and press **Listen** to hear both sides. Good li
 
 Lets the audience pick the problem. Needs Live voice (check
 `/core/voice/status`). On the phone, choose **Your own story** at the top of
-**Who is calling**: you call as Riley Hughes, a six-year customer with an
+**Who is calling**: you call as Marcus Edward, a six-year customer with an
 everyday account and debit card, savings, a credit card and a home loan with
-an offset. **Call**, **Approve** the push, then describe a problem in your own
-words. Stories the data backs up:
+an offset. **Call**, answer the security questions with the details shown
+beside the phone, then describe a problem in your own words. Stories the data backs up:
 
 - "I've been charged twice at Northshore Electronics yesterday." (two $264.00 charges a minute apart; the AI describes them and offers a specialist for the dispute)
 - "There's a pizza charge last night I didn't make." ($38.40 pending at Twilight Pizza Co; the AI offers to lock the card: LC-1, instant)

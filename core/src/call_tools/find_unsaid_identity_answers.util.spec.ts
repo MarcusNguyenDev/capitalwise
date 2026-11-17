@@ -52,6 +52,15 @@ describe('findUnsaidIdentityAnswers', () => {
     ).toEqual([]);
   });
 
+  it('accepts a postcode said with "double" (as on a real call)', () => {
+    expect(
+      findUnsaidIdentityAnswers(
+        [{ question_id: 'Q3', answer: '4221' }],
+        ['Four double two one.'],
+      ),
+    ).toEqual([]);
+  });
+
   it('rejects answers given before the caller has said anything', () => {
     expect(
       findUnsaidIdentityAnswers([{ question_id: 'Q3', answer: '4225' }], []),

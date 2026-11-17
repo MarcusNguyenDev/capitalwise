@@ -91,6 +91,8 @@ describe('parseDateOfBirth (Australian D/M/Y)', () => {
     ['thirtieth of April two thousand and two', '2002-04-30'],
     ['30 April twenty oh two', '2002-04-30'],
     ['12 Sept 1942', '1942-09-12'],
+    // Speech-to-text misheard "My date of birth is"; the date itself is right.
+    ['My  world is 19th of July 1990', '1990-07-19'],
   ])('reads "%s" as %s', (spoken_date, iso_date) => {
     expect(parseDateOfBirth(spoken_date, CLOCK)).toBe(iso_date);
   });
@@ -135,6 +137,16 @@ describe('isPostcodeMatch and isCardLastFourMatch (digits only)', () => {
     },
   );
 
+  it.each([
+    ['Four double two one.', '4221'],
+    ['four double 2 one', '4221'],
+    ['4 double 2 1', '4221'],
+    ['four two double oh', '4200'],
+    ['triple four one', '4441'],
+  ])('reads repeated digits in "%s" as %s', (spoken_postcode, postcode) => {
+    expect(isPostcodeMatch(spoken_postcode, postcode)).toBe(true);
+  });
+
   it('matches the last four digits of any card the customer holds', () => {
     expect(isCardLastFourMatch('six one four two', ['3390', '6142'])).toBe(
       true,
@@ -142,6 +154,9 @@ describe('isPostcodeMatch and isCardLastFourMatch (digits only)', () => {
     expect(
       isCardLastFourMatch('the last four are 3390', ['3390', '6142']),
     ).toBe(true);
+    expect(isCardLastFourMatch('double three nine oh', ['3390', '6142'])).toBe(
+      true,
+    );
     expect(isCardLastFourMatch('1234', ['3390', '6142'])).toBe(false);
   });
 });

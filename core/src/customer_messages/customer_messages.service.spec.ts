@@ -14,7 +14,7 @@ function buildCall(call_overrides: Partial<CallRow> = {}): CallRow {
     call_id: CALL_ID,
     caller_number: '+61491576801',
     customer_id: 'CUS-1007',
-    customer_name: 'Riley Hughes',
+    customer_name: 'Marcus Edward',
     channel: 'BROWSER',
     status: 'AI_ACTIVE',
     handled_by_agent_id: 'AI-01',

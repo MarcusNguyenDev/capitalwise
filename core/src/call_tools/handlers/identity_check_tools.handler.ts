@@ -42,8 +42,12 @@ const NON_ANSWER_MESSAGE =
 const UNSAID_ANSWER_MESSAGE =
   'Some of these answers were not said by the caller on this call. Never fill in an identity answer yourself. Ask the caller for the missing detail, then submit exactly what they said.';
 
-const FAILED_CHECK_MESSAGE =
-  'Those details did not match. Do not say which answer was wrong. Kindly ask the caller to check and say them again, one at a time, or offer the other question at level 2.';
+// Level 1 is re-asked in full: the api needs all three answers again, and
+// asking for every detail gives nothing away about which one was wrong.
+const FAILED_LEVEL_ONE_MESSAGE =
+  'Those details did not match. Do not say which answer was wrong. Say politely that you could not confirm the details, then ask for the date of birth and the postcode again, one at a time (keep the full name they gave unless they correct it). Then submit all three answers together, using what they say now.';
+const FAILED_LEVEL_TWO_MESSAGE =
+  'That answer did not match. Do not say what the right answer is. Kindly ask the caller to check and try again, or offer the other question.';
 const LOCKED_CHECK_MESSAGE =
   'Identity could not be confirmed and is now locked on this call. A fraud specialist has the case. Do not discuss any account or say which answer was wrong. Say kindly that, for their security, a specialist will help them, and stop.';
 
@@ -139,7 +143,10 @@ export class IdentityCheckToolsHandler {
       is_passed: false,
       is_locked: false,
       remaining_attempts: identity_check_result.remaining_attempts,
-      message: FAILED_CHECK_MESSAGE,
+      message:
+        readIdentityLevel(call) === 0
+          ? FAILED_LEVEL_ONE_MESSAGE
+          : FAILED_LEVEL_TWO_MESSAGE,
     };
   }
 

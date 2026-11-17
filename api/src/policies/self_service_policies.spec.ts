@@ -311,7 +311,7 @@ describe('REFUND_FEE v4 (earned autonomy)', () => {
 });
 
 describe('RAISE_DISPUTE v1', () => {
-  const riley_duplicate = {
+  const marcus_duplicate = {
     identity_level: 2,
     dispute_reason: 'DUPLICATE',
     is_duplicate_confirmed: true,
@@ -322,7 +322,7 @@ describe('RAISE_DISPUTE v1', () => {
   it('RD-1: scam signals -> ESCALATE', () => {
     expect(
       decide(RAISE_DISPUTE_POLICY_V1, {
-        ...riley_duplicate,
+        ...marcus_duplicate,
         scam_coaching_signals: ['URGENCY'],
       }),
     ).toMatchObject({ rule: 'RD-1', route: 'ESCALATE' });
@@ -331,15 +331,15 @@ describe('RAISE_DISPUTE v1', () => {
   it('RD-2: unrecognised and over $500 -> ESCALATE', () => {
     expect(
       decide(RAISE_DISPUTE_POLICY_V1, {
-        ...riley_duplicate,
+        ...marcus_duplicate,
         dispute_reason: 'UNRECOGNISED',
         txn_amount: 640,
       }),
     ).toMatchObject({ rule: 'RD-2', route: 'ESCALATE' });
   });
 
-  it('RD-3: Riley, a confirmed duplicate of $264 -> AUTO with a provisional credit', () => {
-    expect(decide(RAISE_DISPUTE_POLICY_V1, riley_duplicate)).toMatchObject({
+  it('RD-3: Marcus, a confirmed duplicate of $264 -> AUTO with a provisional credit', () => {
+    expect(decide(RAISE_DISPUTE_POLICY_V1, marcus_duplicate)).toMatchObject({
       rule: 'RD-3',
       route: 'AUTO',
       recommend: 'APPROVE',
@@ -350,7 +350,7 @@ describe('RAISE_DISPUTE v1', () => {
   it('a duplicate the ledger does not confirm gets no credit', () => {
     expect(
       decide(RAISE_DISPUTE_POLICY_V1, {
-        ...riley_duplicate,
+        ...marcus_duplicate,
         is_duplicate_confirmed: false,
       }),
     ).toMatchObject({ rule: 'RD-DEFAULT', route: 'AUTO', proposal: null });
@@ -359,7 +359,7 @@ describe('RAISE_DISPUTE v1', () => {
   it('RD-4: over $2,000 -> staff APPROVE', () => {
     expect(
       decide(RAISE_DISPUTE_POLICY_V1, {
-        ...riley_duplicate,
+        ...marcus_duplicate,
         txn_amount: 2400,
       }),
     ).toMatchObject({ rule: 'RD-4', route: 'APPROVE' });
@@ -368,7 +368,7 @@ describe('RAISE_DISPUTE v1', () => {
   it('RD-DEFAULT: lodged automatically, no credit', () => {
     expect(
       decide(RAISE_DISPUTE_POLICY_V1, {
-        ...riley_duplicate,
+        ...marcus_duplicate,
         dispute_reason: 'NOT_RECEIVED',
         is_duplicate_confirmed: false,
         txn_amount: 38.4,
@@ -402,7 +402,7 @@ describe('REQUEST_STATEMENT and UPDATE_PREFERENCES', () => {
 });
 
 describe('PAYMENT_ARRANGEMENT v1', () => {
-  const riley_loan = {
+  const marcus_loan = {
     identity_level: 2,
     has_care_flag: false,
     vulnerability_signals: [],
@@ -413,7 +413,7 @@ describe('PAYMENT_ARRANGEMENT v1', () => {
   it('PA-1: care flag -> ESCALATE to CARE', () => {
     expect(
       decide(PAYMENT_ARRANGEMENT_POLICY_V1, {
-        ...riley_loan,
+        ...marcus_loan,
         has_care_flag: true,
       }),
     ).toMatchObject({ rule: 'PA-1', route: 'ESCALATE', skill: 'CARE' });
@@ -422,20 +422,20 @@ describe('PAYMENT_ARRANGEMENT v1', () => {
   it('PA-2: vulnerability signals -> ESCALATE to CARE', () => {
     expect(
       decide(PAYMENT_ARRANGEMENT_POLICY_V1, {
-        ...riley_loan,
+        ...marcus_loan,
         vulnerability_signals: ['DISTRESS'],
       }),
     ).toMatchObject({ rule: 'PA-2', route: 'ESCALATE', skill: 'CARE' });
   });
 
   it('PA-3: up to 30 days behind and up to 8 weeks -> AUTO', () => {
-    expect(decide(PAYMENT_ARRANGEMENT_POLICY_V1, riley_loan)).toMatchObject({
+    expect(decide(PAYMENT_ARRANGEMENT_POLICY_V1, marcus_loan)).toMatchObject({
       rule: 'PA-3',
       route: 'AUTO',
     });
     expect(
       decide(PAYMENT_ARRANGEMENT_POLICY_V1, {
-        ...riley_loan,
+        ...marcus_loan,
         days_in_arrears: 30,
         arrangement_weeks: 8,
       }).rule,
@@ -450,7 +450,7 @@ describe('PAYMENT_ARRANGEMENT v1', () => {
     ]) {
       expect(
         decide(PAYMENT_ARRANGEMENT_POLICY_V1, {
-          ...riley_loan,
+          ...marcus_loan,
           ...changed_facts,
         }),
       ).toMatchObject({ rule: 'PA-DEFAULT', route: 'APPROVE', skill: null });

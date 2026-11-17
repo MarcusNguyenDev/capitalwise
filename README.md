@@ -100,7 +100,7 @@ The customer phone has a **Live / Scripted** switch.
   its providers reachable (`GET /core/voice/status`); otherwise the switch
   says what is missing. If a live call fails, a toast offers Scripted mode.
 - **Your own story** (first caller on the phone page): an unscripted Live
-  call as Riley Hughes (CUS-1007), a broad demo customer with everyday,
+  call as Marcus Edward (CUS-1007), a broad demo customer with everyday,
   savings, credit card and home loan accounts and a few everyday problems
   already in the data. Describe any problem in your own words. It is always
   Live; while Live is off it stays selectable but **Call** is disabled with

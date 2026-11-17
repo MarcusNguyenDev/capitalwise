@@ -9,6 +9,9 @@ describe('readSpokenNumbers', () => {
     ['my postcode is four two two five', '4225'],
     ['forty-two twenty-five', '4225'],
     ['three thousand four hundred and twelve', '3412'],
+    ['Four double two one.', '4221'],
+    ['four two double oh', '4200'],
+    ['triple three nine', '3339'],
   ])('reads "%s" as including %s', (spoken_text, expected_number) => {
     expect(readSpokenNumbers(spoken_text)).toContain(expected_number);
   });

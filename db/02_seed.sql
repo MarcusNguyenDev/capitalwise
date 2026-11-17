@@ -31,7 +31,7 @@ INSERT INTO bank.customers (customer_id, first_name, last_name, date_of_birth, m
   ('CUS-1004', 'Margaret', 'Collins',      DATE '1948-03-03', '+61491570159', 'margaret.collins@example.com',   '9 Jacaranda Avenue',    'Palm Beach',     'QLD', '4221', now() - interval '140 days',          current_date - interval '31 years 6 months'),
   ('CUS-1005', 'Tom',      'Barker',       DATE '1981-10-09', '+61491570110', 'tom.barker@example.com',         '31 Hillview Drive',     'Nerang',         'QLD', '4211', now() - interval '5 years 7 months',  current_date - interval '5 years 7 months'),
   ('CUS-1006', 'Emma',     'Barker',       DATE '1983-02-11', '+61491570313', 'emma.barker@example.com',        '31 Hillview Drive',     'Nerang',         'QLD', '4211', now() - interval '5 years 7 months',  current_date - interval '5 years 7 months'),
-  ('CUS-1007', 'Riley',    'Hughes',       DATE '1990-07-19', '+61491576801', 'riley.hughes@example.com',       '18 Coolgardie Street',  'Elanora',        'QLD', '4221', now() - interval '2 years 9 months',  current_date - interval '6 years 3 months'),
+  ('CUS-1007', 'Marcus',   'Edward',       DATE '1990-07-19', '+61491576801', 'marcus.edward@example.com',      '18 Coolgardie Street',  'Elanora',        'QLD', '4221', now() - interval '2 years 9 months',  current_date - interval '6 years 3 months'),
   ('CUS-2001', 'Liam',     'Nguyen',       DATE '1997-08-12', '+61491570006', 'liam.nguyen@example.com',        '3 Foxwell Road',        'Coomera',        'QLD', '4209', now() - interval '3 years 1 month',   current_date - interval '4 years 2 months'),
   ('CUS-2002', 'Olivia',   'Tran',         DATE '1993-05-27', '+61491570737', 'olivia.tran@example.com',        '27 Lake Street',        'Varsity Lakes',  'QLD', '4227', now() - interval '5 years 4 months',  current_date - interval '8 years 1 month'),
   ('CUS-2003', 'Noah',     'Williams',     DATE '1974-10-04', '+61491571266', 'noah.williams@example.com',      '61 Railway Street',     'Mudgeeraba',     'QLD', '4213', now() - interval '11 years 8 months', current_date - interval '12 years 5 months'),
@@ -307,7 +307,7 @@ INSERT INTO bank.devices (device_id, customer_id, device_name, platform, first_s
   ('DEV-10041', 'CUS-1004', 'Margaret''s iPad',       'iPadOS',  now() - interval '3 years 2 months', true),
   ('DEV-10042', 'CUS-1004', 'Android phone (SM-A15)', 'Android', now() - interval '52 minutes',       false),
   ('DEV-10051', 'CUS-1005', 'Tom''s iPhone',          'iOS',     now() - interval '11 months',        true),
-  ('DEV-10071', 'CUS-1007', 'Riley''s Pixel',         'Android', now() - interval '2 years 4 months', true);
+  ('DEV-10071', 'CUS-1007', 'Marcus''s Pixel',        'Android', now() - interval '2 years 4 months', true);
 
 INSERT INTO bank.payees (payee_id, customer_id, name, payee_type, bsb, account_number, payid, created_at, name_check, name_check_returned) VALUES
   ('PAY-10041', 'CUS-1004', 'Helen Collins',                'PAYID',       NULL,      NULL,       '+61491576398', now() - interval '4 years',    'MATCH',    'Helen J Collins'),
@@ -424,7 +424,7 @@ INSERT INTO bank.transactions (txn_id, account_id, created_at, posted_at, status
   ('TXN-F3004',  'ACC-30041', now() - interval '28 hours',            now() - interval '28 hours', 'POSTED',  'FEE',        'INTERNAL', -15.00,  'Overdrawn fee', NULL, NULL, NULL);
 
 -- ===========================================================================
--- CUS-1007 Riley Hughes: the presenter's own story (unscripted, Live only)
+-- CUS-1007 Marcus Edward: the presenter's own story (unscripted, Live only)
 -- A broad, ordinary customer, so most everyday problems have real data:
 --   card lost or stolen     debit CRD-10071 (6142), credit CRD-10073 (3390)  LC-1 AUTO
 --   charged twice           Northshore Electronics, $264.00 twice yesterday 12:14 and 12:15

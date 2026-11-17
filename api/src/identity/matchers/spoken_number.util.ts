@@ -220,16 +220,38 @@ export function parseSpokenAmount(spoken_text: string): number | null {
 
 const MIN_WRITTEN_DIGITS = 4;
 
+const REPEAT_WORDS: Record<string, number> = { double: 2, triple: 3 };
+
+function isSingleDigit(word: string): boolean {
+  return /^\d$/.test(word) || readDigitWord(word) !== '';
+}
+
+// Australians say repeated digits as "double two" or "triple oh":
+// "four double two one" -> four two two one.
+function expandRepeatedDigits(words: string[]): string[] {
+  return words.flatMap((word, index) => {
+    const next_word = words[index + 1];
+    if (
+      word in REPEAT_WORDS &&
+      next_word !== undefined &&
+      isSingleDigit(next_word)
+    ) {
+      return Array<string>(REPEAT_WORDS[word] - 1).fill(next_word);
+    }
+    return [word];
+  });
+}
+
 function readDigitWord(word: string): string {
   const unit = UNIT_WORDS[word];
   return unit !== undefined && unit <= 9 ? String(unit) : '';
 }
 
-// "4 2 2 1", "four two two one", "4221" -> "4221": the digits the caller
+// "4 2 2 1", "four two two one", "four double two one", "4221" -> "4221": the digits the caller
 // said, in order. When at least four are written as digits, words are
 // ignored, so "the last four are 3390" is 3390, not 43390.
 export function extractSpokenDigits(spoken_text: string): string {
-  const words = splitWords(spoken_text);
+  const words = expandRepeatedDigits(splitWords(spoken_text));
   const written_digits = words.filter((word) => /^\d+$/.test(word)).join('');
   if (written_digits.length >= MIN_WRITTEN_DIGITS) {
     return written_digits;

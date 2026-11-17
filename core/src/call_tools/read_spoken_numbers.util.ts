@@ -1,5 +1,5 @@
 // Reads numbers said in words ("seven hundred and ninety", "nineteen
-// forty-two", "four two two five", "the twelfth") so answers can be compared
+// forty-two", "four two two five", "four double two one", "the twelfth") so answers can be compared
 // with what the caller said, whether speech-to-text wrote digits or words.
 
 const UNIT_VALUES: Record<string, number> = {
@@ -59,6 +59,21 @@ const ORDINAL_VALUES: Record<string, number> = {
   thirtieth: 30,
 };
 
+const REPEAT_COUNTS: Record<string, number> = { double: 2, triple: 3 };
+
+// "four double two one" -> four two two one, as Australians say repeated digits.
+function expandRepeatedDigits(words: string[]): string[] {
+  return words.flatMap((word, index) => {
+    const next_word = words[index + 1];
+    const next_value =
+      next_word === undefined ? undefined : UNIT_VALUES[next_word];
+    if (word in REPEAT_COUNTS && next_value !== undefined && next_value <= 9) {
+      return Array<string>(REPEAT_COUNTS[word] - 1).fill(next_word);
+    }
+    return [word];
+  });
+}
+
 function readWordValue(word: string): number | null {
   return UNIT_VALUES[word] ?? TENS_VALUES[word] ?? ORDINAL_VALUES[word] ?? null;
 }
@@ -90,11 +105,13 @@ function canContinue(
 // Splits text into runs of number words; each run is read as one or more
 // groups ("nineteen forty two" -> [19, 42], "four two" -> [4, 2]).
 function readNumberGroups(text: string): number[][] {
-  const words = text
-    .toLowerCase()
-    .replace(/-/g, ' ')
-    .split(/[^a-z]+/)
-    .filter(Boolean);
+  const words = expandRepeatedDigits(
+    text
+      .toLowerCase()
+      .replace(/-/g, ' ')
+      .split(/[^a-z]+/)
+      .filter(Boolean),
+  );
   const runs: number[][] = [];
   let current_run: number[] = [];
   let thousands_value = 0;
