@@ -31,7 +31,7 @@ export function Tabs<TabKey extends string>({ tabs, selected_key, onSelect, labe
           <TabsPrimitive.Trigger
             key={tab.key}
             value={tab.key}
-            className="-mb-px inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-2.5 text-sm font-semibold text-ink-soft transition-colors hover:text-ink data-[state=active]:border-ink data-[state=active]:text-ink"
+            className="-mb-px inline-flex h-11 items-center gap-2 border-b-[3px] border-transparent px-3 text-sm font-semibold text-ink-soft transition-colors hover:text-brand-deep data-[state=active]:border-accent data-[state=active]:text-brand-deep"
           >
             {tab.label}
             {tab.count !== undefined ? <span className="rounded-full bg-surface px-1.5 text-xs tabular-nums text-ink-soft">{tab.count}</span> : null}

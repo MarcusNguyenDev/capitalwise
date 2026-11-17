@@ -14,14 +14,14 @@ export type ButtonSize = "small" | "medium" | "large";
 
 const VARIANT_CLASS_NAMES: Record<ButtonVariant, string> = {
   primary: "bg-accent text-white shadow-card hover:bg-accent-dark",
-  secondary: "border border-line-strong bg-white text-ink shadow-card hover:bg-surface",
-  danger: "border border-accent/40 bg-white text-accent hover:bg-accent-soft",
+  secondary: "border border-line-strong bg-white text-brand-deep hover:border-brand-deep hover:bg-brand-soft",
+  danger: "border border-danger/40 bg-white text-danger hover:bg-danger-soft",
   ghost: "text-ink-soft hover:bg-surface hover:text-ink",
 };
 
 const SIZE_CLASS_NAMES: Record<ButtonSize, string> = {
   small: "h-8 gap-1.5 px-2.5 text-sm",
-  medium: "h-9 gap-2 px-3.5 text-sm",
+  medium: "h-10 gap-2 px-4 text-sm",
   large: "h-11 gap-2 px-5 text-base",
 };
 

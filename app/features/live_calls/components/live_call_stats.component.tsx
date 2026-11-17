@@ -17,7 +17,7 @@ export function LiveCallStats() {
   const kpis = useLiveQuery(fetchDashboardKpis, STATS_REFRESH_EVENTS).data;
 
   return (
-    <dl className="grid grid-cols-3 gap-x-6 gap-y-2 border-b border-line bg-white px-6 py-2.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Today at a glance">
+    <dl className="grid shrink-0 grid-cols-3 gap-x-5 gap-y-4 border-b border-line bg-white px-5 py-5 sm:grid-cols-4 sm:px-7 2xl:grid-cols-7" aria-label="Today at a glance">
       <Stat label="Live calls" value={formatCount(kpis?.live_calls)} />
       <Stat label="AI handling" value={formatCount(kpis?.handled_by_ai)} />
       <Stat label="Need attention" value={formatCount(kpis?.needing_attention)} is_highlighted={(kpis?.needing_attention ?? 0) > 0} />

@@ -1,8 +1,9 @@
 "use client";
 
-import { ExternalLink, Search } from "lucide-react";
+import { ArrowUpRight, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 
+import { WestpacBrand } from "@/shared/brand/westpac_brand.component";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { KeyboardKey } from "@/shared/ui/keyboard_key.component";
 
@@ -27,31 +28,30 @@ export function SideNavigation({ onOpenSearch, onOpenShortcuts, onResetDemo, onN
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-        <span className="flex size-8 items-center justify-center rounded-md bg-accent text-sm font-black text-white" aria-hidden>
-          {bank_name.charAt(0)}
-        </span>
-        <span className="leading-tight">
-          <span className="block text-sm font-semibold">{bank_name}</span>
-          <span className="block text-xs text-ink-faint">Specialist console</span>
-        </span>
+      <div className="flex h-15 shrink-0 items-center gap-3 border-b border-line px-6">
+        <WestpacBrand bank_name={bank_name} />
+        <span className="border-l border-line pl-3 text-sm font-semibold text-brand-deep">{bank_name}</span>
       </div>
-      <div className="px-3 pb-2">
+      <div className="px-6 pb-4 pt-6">
+        <p className="text-xl font-bold tracking-tight text-brand-deep">CapitalWise<span className="text-accent">.</span></p>
+        <p className="mt-1 text-xs text-ink-faint">Specialist console</p>
+      </div>
+      <div className="px-4 pb-2">
         <button
           type="button"
           onClick={onOpenSearch}
-          className="flex h-9 w-full items-center gap-2 rounded-md border border-line bg-canvas px-2.5 text-sm text-ink-faint hover:border-line-strong"
+          className="flex h-10 w-full items-center gap-2 rounded-md border border-line bg-canvas px-3 text-xs text-ink-soft transition-colors hover:border-line-strong hover:bg-white"
         >
           <Search className="size-4" aria-hidden />
-          <span className="flex-1 text-left">Search or jump to…</span>
+          <span className="flex-1 text-left">Search the console</span>
           <KeyboardKey>⌘K</KeyboardKey>
         </button>
       </div>
-      <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {NAVIGATION_SECTIONS.map((navigation_section) => (
-          <div key={navigation_section.title} className="mt-3">
-            <p className="px-2.5 pb-1 text-xs font-semibold text-ink-faint">{navigation_section.title}</p>
-            <ul className="flex flex-col gap-0.5">
+          <div key={navigation_section.title} className="mt-5">
+            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{navigation_section.title}</p>
+            <ul className="flex flex-col gap-1">
               {navigation_section.links.map((navigation_link) => (
                 <NavigationLinkItem
                   key={navigation_link.href}
@@ -68,14 +68,14 @@ export function SideNavigation({ onOpenSearch, onOpenShortcuts, onResetDemo, onN
           href={CUSTOMER_PHONE_PATH}
           target="_blank"
           rel="noreferrer"
-          className="mt-4 flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium text-ink-soft hover:bg-canvas hover:text-ink"
+          className="mt-5 flex min-h-11 items-center gap-2.5 rounded-md border border-line px-3 text-sm font-medium text-brand-deep transition-colors hover:bg-brand-soft"
         >
-          <ExternalLink className="size-4 text-ink-faint" aria-hidden />
-          Customer phone
+          <span className="flex-1">Customer phone</span>
+          <ArrowUpRight className="size-4" aria-hidden />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
       </nav>
-      <div className="border-t border-line p-3">
+      <div className="shrink-0 border-t border-line bg-canvas/60 p-3">
         <UserMenu onOpenShortcuts={onOpenShortcuts} onResetDemo={onResetDemo} />
         <div className="mt-2 flex items-center justify-between gap-2 px-2">
           <ConnectionStatus />

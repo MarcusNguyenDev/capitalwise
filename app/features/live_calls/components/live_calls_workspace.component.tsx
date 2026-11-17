@@ -48,8 +48,10 @@ export function LiveCallsWorkspace() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Live calls" actions={<SimulatorPopover />} />
-      <LiveCallStats />
+      <PageHeader title="Live calls" description="Every conversation, supported. Follow your AI specialists and step in where it matters." actions={<SimulatorPopover />} />
+      <div className={selected_call_id ? "hidden shrink-0 lg:block" : "shrink-0"}>
+        <LiveCallStats />
+      </div>
       <SplitView
         list_label="Call queue"
         has_selection={selected_call_id !== null}

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
@@ -105,7 +106,15 @@ export function CustomerPhone() {
   ));
 
   return (
-    <main className="flex h-dvh flex-col bg-canvas md:flex-row md:items-center md:justify-center md:gap-12 md:overflow-y-auto md:px-8 md:py-8">
+    <main className="relative isolate flex h-dvh flex-col bg-white md:h-auto md:min-h-dvh md:flex-row md:items-center md:justify-center md:gap-8 md:overflow-x-clip md:bg-brand-soft md:px-6 md:py-8 lg:gap-20">
+      <Image
+        src="/brand/westpac-background.svg"
+        width={684}
+        height={456}
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute -right-36 bottom-0 -z-10 hidden w-[44rem] max-w-none opacity-[0.07] md:block"
+      />
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-white px-3 py-2 md:hidden">
         <button
           type="button"
@@ -124,22 +133,35 @@ export function CustomerPhone() {
         <span className="shrink-0 text-xs text-ink-faint">Mock data</span>
       </div>
 
-      <aside aria-label="Demo controls" className="hidden w-80 shrink-0 flex-col gap-4 md:flex">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Demo controls</p>
-          <h1 className="mt-1 text-xl font-semibold">Customer phone</h1>
-          <p className="mt-1 text-sm text-ink-soft">
-            The AI asks who is calling and confirms identity in conversation: name, date of birth and postcode, plus one question about recent activity when the
-            task needs it. Works from any phone, no app needed.
-          </p>
+      <aside aria-label="Demo controls" className="hidden w-72 shrink-0 flex-col md:flex lg:w-96">
+        <div className="mb-10 flex items-center gap-5">
+          {bank_name.trim().toLowerCase() === "westpac" ? (
+            <Image src="/brand/westpac-logo.svg" width={69} height={28} alt="Westpac" className="h-7 w-auto" />
+          ) : (
+            <span className="text-xl font-bold text-brand-deep">{bank_name}</span>
+          )}
+          <span className="border-l border-brand-deep/20 py-1 pl-5 text-sm font-semibold text-brand-deep">CapitalWise</span>
         </div>
-        <div className="rounded-lg border border-line bg-white p-4 shadow-card">{demo_controls}</div>
-        {/* Below xl there is no room for a third column. */}
-        <div className="rounded-lg border border-line bg-white p-4 shadow-card xl:hidden">{caller_details_panel}</div>
-        <p className="text-xs text-ink-faint">Prototype, mock data only</p>
+        <div className="mb-7">
+          <div className="mb-4 flex items-center gap-3">
+            <Image src="/brand/westpac-headset.svg" width={42} height={42} alt="" aria-hidden />
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-deep">Customer phone</p>
+          </div>
+          <h1 className="text-3xl font-bold leading-tight tracking-tight text-brand-deep lg:text-4xl">A little help.<br />A real conversation.</h1>
+          <p className="mt-4 text-sm leading-relaxed text-ink-soft lg:text-base">
+            Banking support that starts with a conversation. The AI specialist confirms who you are, helps with your request and brings in a person when you need one.
+          </p>
+          <p className="mt-3 text-sm font-semibold text-brand-deep">Any phone. No menus. No app needed.</p>
+        </div>
+        <section className="rounded-xl border border-line bg-white p-5 shadow-card">
+          <h2 className="mb-4 border-b border-line pb-3 text-sm font-semibold text-brand-deep">Try a customer conversation</h2>
+          {demo_controls}
+        </section>
+        <div className="mt-4 rounded-xl border border-line bg-white p-5 shadow-card xl:hidden">{caller_details_panel}</div>
+        <p className="mt-4 text-xs leading-relaxed text-ink-faint">CapitalWise prototype · Mock customers and data</p>
       </aside>
 
-      <div className="flex min-h-0 flex-1 md:flex-none">
+      <div className="relative flex min-h-0 flex-1 md:flex-none">
         <PhoneFrame current_time_ms={current_time_ms} is_dark_screen={is_on_call} banners={banners}>
           {is_on_call ? (
             <PhoneCallScreen
