@@ -37,7 +37,7 @@ export function TypedMessageBox({ onSend, onClose }: TypedMessageBoxProps) {
 
   return (
     <form
-      className="mx-4 mt-2 flex animate-slide-in items-center gap-2 rounded-2xl bg-white/10 p-1.5 pl-3.5 focus-within:ring-2 focus-within:ring-white/60"
+      className="mx-4 mt-2 flex animate-slide-in items-center gap-2 rounded-2xl bg-white/10 p-1.5 pl-3.5"
       onSubmit={(submit_event) => {
         submit_event.preventDefault();
         void submitText();
@@ -55,7 +55,7 @@ export function TypedMessageBox({ onSend, onClose }: TypedMessageBoxProps) {
         id={input_id}
         // Opening the box is the tap that asks for the keyboard.
         autoFocus
-        className="h-10 min-w-0 flex-1 bg-transparent text-white placeholder:text-white/55 focus:outline-none"
+        className="h-10 min-w-0 flex-1 bg-transparent text-white placeholder:text-white/55"
         placeholder="Type what you would say…"
         value={text}
         maxLength={MAX_TYPED_MESSAGE_LENGTH}

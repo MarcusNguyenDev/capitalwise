@@ -49,7 +49,8 @@ export function CallerSelector({ callers, selected_customer_id, is_disabled, onS
               <span className={joinClassNames("block text-xs text-ink-soft", !hero_persona.is_unscripted && "truncate")}>{hero_persona.story_label}</span>
               {hero_persona.is_unscripted ? <span className="block text-xs text-ink-faint">Live only · calls as {caller.full_name}</span> : null}
             </span>
-            <span className="hidden text-xs tabular-nums text-ink-faint sm:block">{formatMobileNumber(caller.mobile_phone)}</span>
+            {/* The unscripted caller's number shows on the phone; its row needs the width for the explanation. */}
+            {hero_persona.is_unscripted ? null : <span className="hidden text-xs tabular-nums text-ink-faint sm:block">{formatMobileNumber(caller.mobile_phone)}</span>}
           </label>
         );
       })}
