@@ -229,3 +229,20 @@ export interface CustomerOverview {
   recent_contacts: { contact_id: string; created_at: string; channel: string; event_type: string; summary: string }[];
   devices: { device_id: string; device_name: string; platform: string; first_seen_at: string; is_trusted: boolean }[];
 }
+
+/** Demo only: what the caller would know about themselves, to answer the identity questions. */
+export interface CallerDetails {
+  customer_id: string;
+  full_name: string;
+  /** YYYY-MM-DD */
+  date_of_birth: string;
+  mobile_phone: string;
+  street_address: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+  last_income: { amount: number; kind: "SALARY" | "GOVT_BENEFIT"; posted_at: string | null } | null;
+  recent_card_merchants: string[];
+  card_last_fours: string[];
+  loan_repayment_amounts: number[];
+}

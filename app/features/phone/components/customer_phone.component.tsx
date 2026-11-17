@@ -137,6 +137,7 @@ export function CustomerPhone() {
           {is_on_call ? (
             <PhoneCallScreen
               bank_name={bank_name}
+              caller_customer_id={selected_caller?.customer_id ?? null}
               call={phone_call.active_call}
               call_mode={phone_call.call_mode}
               captions={phone_call.captions}

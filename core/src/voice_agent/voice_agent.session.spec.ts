@@ -124,6 +124,7 @@ function toolReply(
 
 function buildHarness(
   harness_options: {
+    extra_tool_names?: string[];
     tool_delay_ms?: number;
     is_hold_tone_enabled?: boolean;
     is_transcription_failing?: boolean;
@@ -291,6 +292,10 @@ function buildHarness(
             parameters: {},
           },
         },
+        ...(harness_options.extra_tool_names ?? []).map((tool_name) => ({
+          type: 'function' as const,
+          function: { name: tool_name, description: tool_name, parameters: {} },
+        })),
       ],
       ai_voice: AI_VOICE,
       staff_voice: STAFF_VOICE,
@@ -835,7 +840,7 @@ describe('VoiceAgentSession', () => {
     harness = buildHarness();
     harness.scripted_replies.push(
       ...Array.from({ length: MAX_TOOL_ROUNDS + 1 }, () =>
-        toolReply('update_call_insight'),
+        toolReply('get_customer_overview'),
       ),
     );
     await harness.joinAndWaitForGreeting();
@@ -849,10 +854,35 @@ describe('VoiceAgentSession', () => {
       'the fallback line',
     );
 
-    const insight_calls = harness.dispatchTool.mock.calls.filter(
-      (call) => call[1] === 'update_call_insight',
+    const overview_calls = harness.dispatchTool.mock.calls.filter(
+      (call) => call[1] === 'get_customer_overview',
     );
-    expect(insight_calls).toHaveLength(MAX_TOOL_ROUNDS);
+    expect(overview_calls).toHaveLength(MAX_TOOL_ROUNDS);
+  });
+
+  it('offers the insight tool once per caller turn and does not count it against the tool limit', async () => {
+    harness = buildHarness({ extra_tool_names: ['update_call_insight'] });
+    harness.scripted_replies.push(
+      toolReply('update_call_insight'),
+      textReply('I can help with that.'),
+    );
+    await harness.joinAndWaitForGreeting();
+
+    harness.sayToAgent('I lost my card.');
+    await waitFor(
+      () =>
+        harness.recorded_turns.some(
+          (turn) => turn.text === 'I can help with that.',
+        ),
+      'the answer after one insight update',
+    );
+
+    const tool_lists = harness.chat_requests.map((chat_request) =>
+      (chat_request.tools ?? []).map((tool) => tool.function.name),
+    );
+    const last_tool_list = tool_lists[tool_lists.length - 1];
+    expect(last_tool_list).not.toContain('update_call_insight');
+    expect(tool_lists[tool_lists.length - 2]).toContain('update_call_insight');
   });
 
   it('stops everything on END_CALL and ignores the caller afterwards', async () => {

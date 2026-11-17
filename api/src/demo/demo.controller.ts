@@ -1,4 +1,11 @@
-import { Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+} from '@nestjs/common';
 
 import { DemoService } from './demo.service';
 
@@ -9,6 +16,13 @@ export class DemoController {
   @Get('config')
   getConfig() {
     return this.demo_service.getConfig();
+  }
+
+  // The simulated phone's crib sheet: what this customer would know about
+  // themselves. Demo mode only; never used by core or the AI.
+  @Get('callers/:customer_id/details')
+  getCallerDetails(@Param('customer_id') customer_id: string) {
+    return this.demo_service.getCallerDetails(customer_id);
   }
 
   @Post('reset')

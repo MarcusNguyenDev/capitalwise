@@ -54,7 +54,7 @@ export const aiConfig = registerAs('ai', () => ({
     timeout_ms: readNumber('AI_TTS_TIMEOUT_MS', 20_000),
     base_url: readBaseUrl('AI_TTS_BASE_URL'),
   },
-  health_check_timeout_ms: readNumber('AI_HEALTH_CHECK_TIMEOUT_MS', 2_000),
+  health_check_timeout_ms: readNumber('AI_HEALTH_CHECK_TIMEOUT_MS', 5_000),
   providers: {
     ollama: {
       base_url: readBaseUrl('OLLAMA_BASE_URL'),

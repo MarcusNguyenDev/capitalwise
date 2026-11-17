@@ -20,7 +20,7 @@
     { "type": "ai", "text": "Thank you, {{submit_identity_answers.first_name}}. Because this is about a payment, just one more quick security question. {{start_identity_check.questions.0.prompt}}" },
     { "type": "customer", "text": "My pension? About eleven hundred and forty dollars." },
     { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "About eleven hundred and forty dollars"}]} },
-    { "type": "ai", "text": "Thank you, that's confirmed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "ai", "text": "Thank you, that's confirmed. I'll just place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_held_payments", "args": {} },
     { "type": "ai", "text": "Thanks for holding. I can see it. The eighteen thousand five hundred dollars is on hold for a security review. Can you tell me a little about what the payment is for?" },
     { "type": "customer", "text": "The bank's security team rang me. They're on my other phone right now. They said my account's been hacked and I have to move my money to a safe account today. It's urgent, and they said not to tell anyone." },

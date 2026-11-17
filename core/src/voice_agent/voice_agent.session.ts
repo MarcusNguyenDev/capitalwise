@@ -1,7 +1,10 @@
 import { Logger } from '@nestjs/common';
 
 import { AiRequestAbortedError } from '../ai/errors/ai_request_aborted.error';
-import { ChatToolCall } from '../ai/types/chat_request.type';
+import {
+  ChatToolDefinition,
+  ChatToolCall,
+} from '../ai/types/chat_request.type';
 import { ChatUsage } from '../ai/types/chat_stream_event.type';
 import { SpeechStream, SpeechSummary } from '../ai/types/speech_stream.type';
 import { TranscriptionResult } from '../ai/types/transcription.type';
@@ -37,7 +40,9 @@ import {
   CALLER_AUDIO_STALL_MS,
   CUSTOMER_JOIN_TIMEOUT_MS,
   CUSTOMER_RECONNECT_GRACE_MS,
+  CALL_INSIGHT_TOOL_NAME,
   HOLD_TONE_INTERVAL_MS,
+  MAX_INSIGHT_ONLY_ROUNDS,
   MAX_TOOL_ROUNDS,
 } from './constants/voice_agent_timing.constant';
 import { ConversationHistory } from './conversation.history';
@@ -530,27 +535,50 @@ export class VoiceAgentSession {
     }
   }
 
+  // The dashboard insight tool is offered once per caller turn: a real model
+  // otherwise called it round after round and used up the tool budget before
+  // answering. Insight-only rounds do not count against MAX_TOOL_ROUNDS.
   private async respond(turn_timing: TurnTiming): Promise<void> {
     await this.warm_up_done;
     let tool_round_count = 0;
+    let insight_only_round_count = 0;
+    let is_insight_used = false;
     while (this.canSpeak() && !this.is_generation_stopped) {
-      const tool_calls = await this.runModelRound(turn_timing);
+      const tool_calls = await this.runModelRound(
+        turn_timing,
+        this.listToolsForRound(!is_insight_used),
+      );
       if (!tool_calls || tool_calls.length === 0) {
         return;
       }
-      if (tool_round_count >= MAX_TOOL_ROUNDS) {
+      const is_insight_only = tool_calls.every(
+        (tool_call) => tool_call.name === CALL_INSIGHT_TOOL_NAME,
+      );
+      if (is_insight_only) {
+        insight_only_round_count += 1;
+      } else {
+        tool_round_count += 1;
+      }
+      if (
+        tool_round_count > MAX_TOOL_ROUNDS ||
+        insight_only_round_count > MAX_INSIGHT_ONLY_ROUNDS
+      ) {
         this.refuseToolCalls(tool_calls);
         await this.playFixedLine(AGENT_PHRASES.TOOL_ROUNDS_FALLBACK, {
           turn_timing,
         });
         return;
       }
-      tool_round_count += 1;
+      is_insight_used ||= tool_calls.some(
+        (tool_call) => tool_call.name === CALL_INSIGHT_TOOL_NAME,
+      );
       await this.runToolCallsOnHold(tool_calls, turn_timing);
       const late_turn_timing = this.movePendingCustomerMessagesToHistory();
       if (late_turn_timing) {
         // The caller said something new: it is a new turn with its own budget.
         tool_round_count = 0;
+        insight_only_round_count = 0;
+        is_insight_used = false;
         if (turn_timing.is_latency_recorded) {
           Object.assign(turn_timing, late_turn_timing);
         }
@@ -558,14 +586,28 @@ export class VoiceAgentSession {
     }
   }
 
+  private listToolsForRound(is_insight_offered: boolean): ChatToolDefinition[] {
+    const all_tools = this.dependencies.settings.tools;
+    return is_insight_offered
+      ? all_tools
+      : all_tools.filter(
+          (tool) => tool.function.name !== CALL_INSIGHT_TOOL_NAME,
+        );
+  }
+
   // One streamed model call, spoken while it streams. Returns the tool calls
   // to run next, or null when the reply was interrupted or failed.
   private async runModelRound(
     turn_timing: TurnTiming,
+    round_tools: ChatToolDefinition[] = this.dependencies.settings.tools,
   ): Promise<ChatToolCall[] | null> {
     const active_response = this.beginResponse(turn_timing);
     try {
-      return await this.streamModelReply(active_response, turn_timing);
+      return await this.streamModelReply(
+        active_response,
+        turn_timing,
+        round_tools,
+      );
     } finally {
       active_response.markRecorded();
     }
@@ -574,6 +616,7 @@ export class VoiceAgentSession {
   private async streamModelReply(
     active_response: ActiveResponse,
     turn_timing: TurnTiming,
+    round_tools: ChatToolDefinition[],
   ): Promise<ChatToolCall[] | null> {
     const item_id = `${this.call_id}_ai_${this.response_count}`;
     const tool_calls: ChatToolCall[] = [];
@@ -584,7 +627,7 @@ export class VoiceAgentSession {
         messages: this.history.buildChatMessages(
           this.dependencies.settings.system_prompt,
         ),
-        tools: this.dependencies.settings.tools,
+        tools: round_tools,
         abort_signal: active_response.abort_controller.signal,
       });
       for await (const chat_event of chat_stream) {

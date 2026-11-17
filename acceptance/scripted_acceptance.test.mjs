@@ -88,8 +88,23 @@ async function sayLine(call_id, speaker, text, tool_results) {
   });
 }
 
-async function runToolStep(call_id, tool_name, args, tool_results) {
-  const pending_approval = tool_name === "send_identity_push" ? approveIdentityPush(call_id) : Promise.resolve();
+function resolveArgumentPlaceholders(value, tool_results) {
+  if (typeof value === "string") {
+    return resolvePlaceholders(value, tool_results);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveArgumentPlaceholders(item, tool_results));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveArgumentPlaceholders(item, tool_results)]));
+  }
+  return value;
+}
+
+async function runToolStep(call_id, tool_name, raw_args, tool_results) {
+  const args = resolveArgumentPlaceholders(raw_args, tool_results);
+  // Only the optional in-app check needs a tap; the normal flow is conversational.
+  const pending_approval = tool_name === "send_app_identity_check" ? approveIdentityPush(call_id) : Promise.resolve();
   const [tool_response] = await Promise.all([core.post(`/calls/${call_id}/tools/${tool_name}`, { args }), pending_approval]);
   assert.equal(tool_response.ok, true, `${tool_name} failed: ${JSON.stringify(tool_response.error)}`);
   tool_results[tool_name] = tool_response.result;
@@ -201,33 +216,39 @@ describe("Acceptance test (build prompt section 12)", { concurrency: false }, ()
     await pollUntil("simulated calls to end", async () => (await core.get("/calls")).length === 0);
   });
 
-  test("2. Sarah: identity by app push, card locked instantly, SMS, audit shows AI and LC-1", async () => {
+  test("2. Sarah: identity in conversation (no app), card blocked and replacement ordered by the AI, SMS, audit", async () => {
     const sarah = await runScriptedCall("CUS-1001");
 
-    const [lock_case] = await fetchCallCases(sarah.call_id);
-    assert.equal(lock_case.action_code, "LOCK_CARD");
-    assert.equal(lock_case.tier, 1);
-    assert.equal(lock_case.status, "AUTO_EXECUTED");
-    assert.equal(lock_case.matched_rule_id, "LC-1");
+    const sarah_cases = await fetchCallCases(sarah.call_id);
+    const lost_case = sarah_cases.find((each) => each.action_code === "REPORT_LOST_STOLEN");
+    assert.equal(lost_case.tier, 1);
+    assert.equal(lost_case.status, "AUTO_EXECUTED");
+    const replacement_case = sarah_cases.find((each) => each.action_code === "REPLACE_CARD");
+    assert.equal(replacement_case.tier, 1, "replacement done by the AI, not referred");
+    assert.equal(replacement_case.status, "AUTO_EXECUTED");
 
     const overview = await api.get("/banking/customers/CUS-1001/overview");
-    assert.equal(overview.cards.find((card) => card.card_id === "CRD-10011").status, "TEMP_LOCKED");
+    assert.equal(overview.cards.find((card) => card.card_id === "CRD-10011").status, "BLOCKED_LOST");
+    assert.ok(overview.cards.some((card) => card.card_id !== "CRD-10011" && card.status === "INACTIVE"), "new card ordered");
 
     const notifications = await api.get(`/notifications?customer_id=CUS-1001`);
-    assert.ok(notifications.some((each) => each.kind === "IDENTITY_CHECK" && each.status === "APPROVED"), "identity push approved");
-    assert.ok(notifications.some((each) => each.channel === "SMS" && /locked/i.test(each.body)), "card lock SMS");
+    assert.ok(!notifications.some((each) => each.kind === "IDENTITY_CHECK"), "no app push in the normal flow");
+    assert.ok(notifications.some((each) => each.channel === "SMS" && /replacement|new card/i.test(each.body)), "replacement SMS");
 
     const audit_events = await fetchAuditEvents({ call_id: sarah.call_id });
+    const verified_levels = audit_events
+      .filter((event) => event.event_type === "IDENTITY_VERIFIED")
+      .map((event) => [event.detail.method, event.detail.level]);
+    assert.deepEqual(verified_levels.sort(), [["KNOWLEDGE", 1], ["KNOWLEDGE", 2]]);
     const case_created = audit_events.find((event) => event.event_type === "CASE_CREATED");
     assert.equal(case_created.actor_type, "AI");
-    const policy_evaluated = audit_events.find((event) => event.event_type === "POLICY_EVALUATED");
-    assert.equal(policy_evaluated.detail.matched_rule_id, "LC-1");
-    assert.ok(audit_events.some((event) => event.event_type === "IDENTITY_VERIFIED"));
-    assert.ok(audit_events.some((event) => event.event_type === "TOOL_CALL" && event.detail.tool_name === "lock_card"));
 
     assert.equal(sarah.ended_call.status, "ENDED");
-    assert.ok(sarah.ended_call.identity_verified);
-    assert.ok(!/press \d|account number|passkey/i.test(sarah.spoken_ai_lines.join(" ")), "no menu, account number or passkey");
+    assert.equal(sarah.ended_call.identity_level, 2);
+    assert.equal(sarah.ended_call.identity_method, "KNOWLEDGE");
+    const spoken_text = sarah.spoken_ai_lines.join(" ");
+    assert.ok(!/press \d|account number|passkey|\bapp\b/i.test(spoken_text), "no menu, account number, passkey or app");
+    assert.ok(/full name/i.test(sarah.spoken_ai_lines[0]), "the call opens by asking who is calling");
   });
 
   test("3. Priya: whisper changes the next AI turn, HR-3 case to Sam, approval records the arrangement and sends an SMS", async () => {

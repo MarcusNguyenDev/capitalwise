@@ -17,3 +17,8 @@ export const HOLD_TONE_INTERVAL_MS = 3_000;
 // The caller's audio stopped arriving mid-utterance (a muted or dropped
 // track): the utterance is closed as if the caller had gone quiet.
 export const CALLER_AUDIO_STALL_MS = 1_000;
+
+// Rounds in one caller turn where the model ONLY updated the dashboard insight.
+export const MAX_INSIGHT_ONLY_ROUNDS = 2;
+
+export const CALL_INSIGHT_TOOL_NAME = 'update_call_insight';

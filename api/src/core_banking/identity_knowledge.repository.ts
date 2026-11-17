@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { DatabaseService } from '../database/database.service';
+import { CallerContact } from './types/caller_details.type';
 import {
   IdentityCandidate,
   IdentityKnowledge,
@@ -9,7 +10,8 @@ import {
 const CANDIDATE_COLUMNS = `customer_id, first_name, last_name, date_of_birth, postcode`;
 
 // What the bank knows that only the customer should also know. These values
-// stay inside the api: they are compared with answers, never returned.
+// stay inside the api: they are compared with answers, and returned only by
+// the demo-only caller details endpoint (DEMO_MODE=true).
 @Injectable()
 export class IdentityKnowledgeRepository {
   constructor(private readonly database: DatabaseService) {}
@@ -73,6 +75,25 @@ export class IdentityKnowledgeRepository {
       [customer_id, day_count],
     );
     return merchant_rows.map((merchant_row) => merchant_row.merchant);
+  }
+
+  async selectCallerContact(
+    customer_id: string,
+  ): Promise<CallerContact | null> {
+    const contact_rows = await this.database.query<CallerContact>(
+      `SELECT customer.mobile_phone, customer.street_address, customer.suburb,
+              customer.state,
+              (SELECT max(txn.posted_at)
+               FROM bank.transactions AS txn
+               JOIN bank.account_holders AS holder ON holder.account_id = txn.account_id
+               WHERE holder.customer_id = customer.customer_id
+                 AND txn.status = 'POSTED'
+                 AND txn.txn_type IN ('SALARY', 'GOVT_BENEFIT')) AS last_income_at
+       FROM bank.customers AS customer
+       WHERE customer.customer_id = $1`,
+      [customer_id],
+    );
+    return contact_rows[0] ?? null;
   }
 
   async selectCardLastFours(customer_id: string): Promise<string[]> {

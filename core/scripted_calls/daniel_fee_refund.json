@@ -20,7 +20,7 @@
     { "type": "ai", "text": "Thanks, {{submit_identity_answers.first_name}}. Because this is about a refund, I need one more security question. {{start_identity_check.questions.0.prompt}}" },
     { "type": "customer", "text": "About four thousand two hundred, it came in yesterday." },
     { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "about $4200"}]} },
-    { "type": "ai", "text": "That's confirmed, thank you. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "ai", "text": "That's confirmed, thank you. I'll just place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_fee_history", "args": {} },
     { "type": "ai", "text": "Thanks for holding. I can see it: a fifteen dollar overdrawn fee from two days ago, and it's the first fee you've had with us. What happened there?" },
     { "type": "customer", "text": "I moved some money into savings and forgot the insurance direct debit was due. It tipped me over by a few dollars, and my pay landed the next morning." },

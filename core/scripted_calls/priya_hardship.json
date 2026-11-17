@@ -20,7 +20,7 @@
     { "type": "ai", "text": "Thank you, {{submit_identity_answers.first_name}}. Because we'll be talking about your home loan, there's one more security question. {{start_identity_check.questions.0.prompt}}" },
     { "type": "customer", "text": "The JobSeeker payment, about seven hundred and ninety dollars." },
     { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "about $790"}]} },
-    { "type": "ai", "text": "Thank you, that's confirmed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "ai", "text": "Thank you, that's confirmed. I'll just place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_income_summary", "args": {} },
     { "type": "tool", "tool_name": "get_loan_details", "args": {"account_id": "ACC-10031"} },
     { "type": "ai", "text": "Thanks for holding. I can see your salary stopped about five weeks ago, and your next repayment of three thousand four hundred and twelve dollars is due in six days. What can you manage at the moment?" },

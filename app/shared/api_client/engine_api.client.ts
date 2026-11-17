@@ -20,6 +20,7 @@ import type {
   AutonomyOverview,
   AutonomyProposal,
   Caller,
+  CallerDetails,
   CustomerOverview,
   DashboardKpis,
   DemoConfig,
@@ -55,6 +56,8 @@ export interface CaseListFilter {
 // Demo
 export const fetchDemoConfig = () => callApi<DemoConfig>({ path: "/demo/config" });
 export const resetDemo = () => callApi<{ is_reset: boolean }>({ path: "/demo/reset", method: "POST", body: {} });
+/** The simulated phone's crib sheet (demo mode only): the answers to the caller's own identity questions. */
+export const fetchCallerDetails = (customer_id: string) => callApi<CallerDetails>({ path: `/demo/callers/${customer_id}/details` });
 
 // Identity (the api's authoritative record of the knowledge checks on a call)
 export const fetchCallIdentity = (call_id: string) => callApi<CallIdentityRecord>({ path: `/identity/calls/${call_id}` });

@@ -276,3 +276,11 @@ instructions won.
   review, instead of waiting for a person to say no.
 - **Customers have addresses and postcodes;** dates of birth are fixed dates
   so identity answers are stable across reseeds.
+- **A crib card on the simulated phone (demo mode only).** Whoever plays the
+  caller sees that customer's name, date of birth and postcode during the
+  call, and on tap the address and the answers to the level-2 questions (last
+  pay or pension, shops where the card was used this week, loan repayment,
+  card digits). It comes from `GET /api/demo/callers/:customer_id/details`,
+  which answers 403 `DEMO_MODE_DISABLED` unless `DEMO_MODE=true`. It is the
+  only route that returns identity answers. `core` never calls it, so the AI
+  still cannot see the answers.

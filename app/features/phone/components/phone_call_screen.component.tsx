@@ -12,10 +12,13 @@ import type { CallHold, CallMode, LiveCall } from "@/shared/types/call.type";
 import { joinClassNames } from "@/shared/ui/join_class_names.util";
 
 import type { CaptionSpeaker, PhoneCaption } from "../session/phone_call_session.type";
+import { CallerDetailsCard } from "./caller_details_card.component";
 import { TypedMessageBox } from "./typed_message_box.component";
 
 interface PhoneCallScreenProps {
   bank_name: string;
+  /** Who is playing the caller (demo): their own details show on the screen. */
+  caller_customer_id: string | null;
   call: LiveCall | null;
   call_mode: CallMode | null;
   captions: PhoneCaption[];
@@ -134,6 +137,7 @@ function RoundCallButton({ label, is_pressed, tone, onClick, children }: { label
 /** The in-call screen: who you are speaking with, hold state, live captions for both sides, mute, type instead and hang up. */
 export function PhoneCallScreen({
   bank_name,
+  caller_customer_id,
   call,
   call_mode,
   captions,
@@ -168,6 +172,7 @@ export function PhoneCallScreen({
         </div>
         <SpeakingWith human_staff_name={human_staff_name} call_audio={call_audio} is_ai_in_room={call_mode === "LIVE"} />
       </div>
+      {caller_customer_id ? <CallerDetailsCard customer_id={caller_customer_id} /> : null}
       {hold ? <HoldNotice hold={hold} current_time_ms={current_time_ms} /> : null}
       {call_audio && !call_audio.can_play_audio ? (
         <button type="button" onClick={onUnlockAudio} className="mx-auto mt-3 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink">

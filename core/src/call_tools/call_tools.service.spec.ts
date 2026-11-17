@@ -104,10 +104,30 @@ function buildProposalResult(result_overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildHarness(call: CallRow) {
+// What the caller has said on the call: identity answers must come from here.
+const DEFAULT_CALLER_LINES = [
+  "Hi, it's Sarah Mitchell.",
+  '14th of September 1992, postcode 4220.',
+  "I'm Grace Papadopoulos, born 1st of January 1990.",
+  'About $4,210.50, I think. Oh, and Pulse Gym Cafe.',
+];
+
+function buildHarness(
+  call: CallRow,
+  caller_lines: string[] = DEFAULT_CALLER_LINES,
+) {
   const applied_call_changes: (CallChanges | null)[] = [];
   const calls_service = {
     getActiveCall: jest.fn().mockResolvedValue(call),
+    getCallDetail: jest.fn().mockResolvedValue({
+      call,
+      interventions: [],
+      turns: caller_lines.map((text, index) => ({
+        seq: index + 1,
+        speaker: 'CUSTOMER',
+        text,
+      })),
+    }),
     buildAgentActor: jest.fn().mockReturnValue({
       actor_type: 'AI',
       actor_id: call.handled_by_agent_id,
@@ -1074,6 +1094,29 @@ describe('CallToolsService', () => {
     });
   });
   describe('identity checks', () => {
+    it('refuses identity answers the caller never said, without counting an attempt', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL), [
+        "Hello dear, it's Dorothy Evans speaking.",
+      ]);
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000001',
+          answers: [{ question_id: 'Q1', answer: 'Margaret Ellis' }],
+        },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: false,
+        error: { code: 'IDENTITY_ANSWER_NOT_SAID' },
+      });
+      expect(
+        harness.engine_api_client.submitIdentityAnswers,
+      ).not.toHaveBeenCalled();
+    });
+
     it('starts a challenge and passes the questions through without expected values', async () => {
       const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
 

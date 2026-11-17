@@ -7,7 +7,10 @@ import { ConfigType } from '@nestjs/config';
 import { AuditRecorderService } from '../audit/audit_recorder.service';
 import { AUDIT_EVENT_TYPES } from '../audit/constants/audit_event_type.constant';
 import { appConfig } from '../config/app.config';
+import { IdentityKnowledgeAdapter } from '../core_banking/identity_knowledge.adapter';
+import { CallerDetails } from '../core_banking/types/caller_details.type';
 import { DatabaseService } from '../database/database.service';
+import { RECENT_CARD_MERCHANT_DAYS } from '../identity/constants/identity_question.constant';
 import { STAFF_ROOM } from '../live_events/constants/live_events_channel.constant';
 import { LiveEventsPublisher } from '../live_events/live_events.publisher';
 import { SYSTEM_ACTOR } from '../shared_kernel/constants/system_actor.constant';
@@ -27,6 +30,7 @@ export class DemoService {
     private readonly database: DatabaseService,
     private readonly audit_recorder_service: AuditRecorderService,
     private readonly live_events_publisher: LiveEventsPublisher,
+    private readonly identity_knowledge_adapter: IdentityKnowledgeAdapter,
   ) {}
 
   getConfig() {
@@ -36,10 +40,16 @@ export class DemoService {
     };
   }
 
+  getCallerDetails(customer_id: string): Promise<CallerDetails> {
+    this.assertDemoMode();
+    return this.identity_knowledge_adapter.getCallerDetails(
+      customer_id,
+      RECENT_CARD_MERCHANT_DAYS,
+    );
+  }
+
   async resetDemo(): Promise<{ is_reset: true }> {
-    if (!this.app_settings.is_demo_mode) {
-      throw new DemoModeDisabledError();
-    }
+    this.assertDemoMode();
     const sql_dir = resolve(process.cwd(), this.app_settings.db_sql_dir);
     const sql_scripts = await Promise.all(
       RESET_SQL_FILES.map((file_name) =>
@@ -60,5 +70,11 @@ export class DemoService {
       rooms: [STAFF_ROOM],
     });
     return { is_reset: true };
+  }
+
+  private assertDemoMode(): void {
+    if (!this.app_settings.is_demo_mode) {
+      throw new DemoModeDisabledError();
+    }
   }
 }

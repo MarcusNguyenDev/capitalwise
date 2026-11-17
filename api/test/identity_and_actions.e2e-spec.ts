@@ -166,6 +166,29 @@ describe('identity and self-service actions (e2e)', () => {
     await app.close();
   });
 
+  describe('caller details for the simulated phone (demo mode)', () => {
+    it("gives the answers to the caller's own identity questions", async () => {
+      const details_response = await api()
+        .get('/api/demo/callers/CUS-3002/details')
+        .expect(200);
+      expect(details_response.body).toMatchObject({
+        customer_id: 'CUS-3002',
+        full_name: 'Dorothy Evans',
+        date_of_birth: '1942-05-12',
+        postcode: '4225',
+        last_income: { amount: 1144.4, kind: 'GOVT_BENEFIT' },
+        card_last_fours: [expect.stringMatching(/^\d{4}$/)],
+      });
+    });
+
+    it('answers 404 for an unknown customer', async () => {
+      const details_response = await api()
+        .get('/api/demo/callers/CUS-9999/details')
+        .expect(404);
+      expect(details_response.body.error_code).toBe('CUSTOMER_NOT_FOUND');
+    });
+  });
+
   describe('Sarah: level 1, then level 2 when the task needs it', () => {
     let call_id: string;
 

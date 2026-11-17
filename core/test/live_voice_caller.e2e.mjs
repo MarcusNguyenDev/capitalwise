@@ -360,7 +360,7 @@ function chooseSarahLine(ai_text, state) {
   if (/date of birth|birthday|born/.test(asked)) return SARAH.date_of_birth;
   if (/postcode|post code/.test(asked)) return SARAH.postcode;
   if (/last four|four digits/.test(asked)) return SARAH.last_four;
-  if (/shop|business|merchant|where you used your card/.test(asked)) return SARAH.merchant;
+  if (/shop|business|merchant|where you used your card|recent (activity|payments?|transactions?|purchases?)|coffee/.test(asked)) return SARAH.merchant;
   if (/\bpay\b|salary|income|pension|centrelink/.test(asked)) return SARAH.pay;
   if (/full name|your name/.test(asked)) return SARAH.name;
   if (/does that sound|was that you|recogni[sz]e|sound right|sound like you/.test(asked)) return SARAH.last_transaction;

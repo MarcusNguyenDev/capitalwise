@@ -10,6 +10,10 @@ import { StartIdentityCheckArgsDto } from '../dto/start_identity_check_args.dto'
 import { SubmitIdentityAnswersArgsDto } from '../dto/submit_identity_answers_args.dto';
 import { ToolRejectedError } from '../errors/tool_rejected.error';
 import { ToolContext } from '../types/tool_context.type';
+import {
+  findNonAnswers,
+  findUnsaidIdentityAnswers,
+} from '../find_unsaid_identity_answers.util';
 
 const LOCKED_ATTENTION_REASON = 'Identity locked after failed checks';
 
@@ -31,6 +35,12 @@ const CHALLENGE_REFUSAL_MESSAGES: Record<string, string> = {
   NO_DYNAMIC_QUESTION_AVAILABLE:
     'There is no extra security question available for this caller, so this task needs a specialist. Explain in one sentence that it is for their security, then offer request_human.',
 };
+
+const NON_ANSWER_MESSAGE =
+  'The caller has not answered the question yet (a reply like "yes" or "thank you" is not an answer). This was not counted as an attempt. Ask the question again in simpler words, then submit what they answer.';
+
+const UNSAID_ANSWER_MESSAGE =
+  'Some of these answers were not said by the caller on this call. Never fill in an identity answer yourself. Ask the caller for the missing detail, then submit exactly what they said.';
 
 const FAILED_CHECK_MESSAGE =
   'Those details did not match. Do not say which answer was wrong. Kindly ask the caller to check and say them again, one at a time, or offer the other question at level 2.';
@@ -91,6 +101,7 @@ export class IdentityCheckToolsHandler {
     if (call.is_identity_locked) {
       throw this.buildChallengeRefusal('IDENTITY_LOCKED');
     }
+    await this.rejectUnsaidAnswers(call.call_id, tool_args);
     let identity_check_result: IdentityCheckResult;
     try {
       identity_check_result =
@@ -130,6 +141,34 @@ export class IdentityCheckToolsHandler {
       remaining_attempts: identity_check_result.remaining_attempts,
       message: FAILED_CHECK_MESSAGE,
     };
+  }
+
+  // Not counted as an attempt: the caller has not been asked yet.
+  private async rejectUnsaidAnswers(
+    call_id: string,
+    tool_args: SubmitIdentityAnswersArgsDto,
+  ): Promise<void> {
+    const non_answer_question_ids = findNonAnswers(tool_args.answers);
+    if (non_answer_question_ids.length > 0) {
+      throw new ToolRejectedError(
+        'IDENTITY_ANSWER_MISSING',
+        `${NON_ANSWER_MESSAGE} (${non_answer_question_ids.join(', ')})`,
+      );
+    }
+    const { turns } = await this.calls_service.getCallDetail(call_id);
+    const caller_lines = turns
+      .filter((turn) => turn.speaker === 'CUSTOMER' && turn.text)
+      .map((turn) => turn.text as string);
+    const unsaid_question_ids = findUnsaidIdentityAnswers(
+      tool_args.answers,
+      caller_lines,
+    );
+    if (unsaid_question_ids.length > 0) {
+      throw new ToolRejectedError(
+        'IDENTITY_ANSWER_NOT_SAID',
+        `${UNSAID_ANSWER_MESSAGE} (${unsaid_question_ids.join(', ')})`,
+      );
+    }
   }
 
   private async recordPassedCheck(
