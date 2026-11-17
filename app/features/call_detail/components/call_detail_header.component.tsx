@@ -47,7 +47,7 @@ export function CallDetailHeader({ call, staff_call_audio, supervisor_actions, o
       <IconButton label="Back to the queue" icon={<ArrowLeft className="size-4" aria-hidden />} onClick={onClose} className="lg:hidden" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="truncate text-lg font-semibold">{call.customer_name ?? UNIDENTIFIED_CALLER_NAME}</h2>
+          <h2 className="text-lg font-bold text-brand-deep">{call.customer_name ?? UNIDENTIFIED_CALLER_NAME}</h2>
           <CallStatusBadge status={call.status} staff_name={call.assigned_staff_name} />
           <CallIdentityBadge call={call} />
           {hold ? <OnHoldBadge hold={hold} current_time_ms={current_time_ms} should_show_reason /> : null}
@@ -57,7 +57,7 @@ export function CallDetailHeader({ call, staff_call_audio, supervisor_actions, o
           {call.agent_name ? ` · ${call.agent_name}` : ""}
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
         {!is_ended && staff_call_audio.can_use_audio ? <ListenButton staff_call_audio={staff_call_audio} /> : null}
         {is_ended ? null : call.status === "HUMAN_ACTIVE" ? (
           <Button variant="primary" icon={<Undo2 className="size-4" aria-hidden />} disabled={supervisor_actions.is_busy} onClick={() => setIsHandbackOpen(true)}>

@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { fetchDemoConfig } from "@/shared/api_client/engine_api.client";
 import type { DemoConfig } from "@/shared/types/resources.type";
 
-const DEFAULT_DEMO_CONFIG: DemoConfig = { bank_name: "Demo Bank", is_demo_mode: false };
+const DEFAULT_DEMO_CONFIG: DemoConfig = { bank_name: "Westpac", is_demo_mode: false };
 
 const DemoConfigContext = createContext<DemoConfig>(DEFAULT_DEMO_CONFIG);
 

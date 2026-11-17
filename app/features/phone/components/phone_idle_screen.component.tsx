@@ -1,4 +1,5 @@
 import { Phone } from "lucide-react";
+import Image from "next/image";
 
 import type { CustomerNotification } from "@/shared/types/case.type";
 import type { CallMode } from "@/shared/types/call.type";
@@ -35,17 +36,24 @@ export function PhoneIdleScreen({ caller, bank_name, call_mode, call_blocked_rea
   const can_call = caller !== null && call_mode !== null && call_blocked_reason === null && !is_connecting && !has_just_ended;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center px-5 pb-6 pt-6 text-center md:pt-8">
-      <p className="text-xs font-semibold uppercase tracking-widest text-ink-faint">{caller ? `${caller.first_name}'s phone` : "Customer phone"}</p>
-      <p className="mt-0.5 text-sm text-ink-soft">{caller ? formatMobileNumber(caller.mobile_phone) : "Choose who is calling"}</p>
-
-      <div className="mt-6 flex size-16 items-center justify-center rounded-2xl bg-accent text-3xl font-black text-white shadow-raised" aria-hidden>
-        {bank_name.charAt(0)}
+    <div className="flex min-h-0 flex-1 flex-col items-center px-6 pb-6 pt-5 text-center md:pt-7">
+      <div className="w-full rounded-lg bg-canvas px-4 py-3">
+        <p className="text-xs font-semibold text-brand-deep">{caller ? `${caller.first_name}'s phone` : "Customer phone"}</p>
+        <p className="mt-0.5 text-xs text-ink-soft">{caller ? formatMobileNumber(caller.mobile_phone) : "Choose who is calling"}</p>
       </div>
-      <p className="mt-3 text-lg font-semibold">{bank_name}</p>
-      <p className="text-sm text-ink-soft">24/7 phone banking</p>
 
-      <div className="mt-5 min-h-0 w-full flex-1 overflow-y-auto">
+      <div className="mt-7 flex h-12 items-center justify-center">
+        {bank_name.trim().toLowerCase() === "westpac" ? (
+          <Image src="/brand/westpac-logo.svg" width={89} height={36} alt="Westpac" className="h-9 w-auto" />
+        ) : (
+          <span className="flex size-12 items-center justify-center rounded-lg bg-accent text-2xl font-black text-white" aria-hidden>{bank_name.charAt(0)}</span>
+        )}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-brand-deep">{bank_name} phone banking</p>
+      <p className="mt-4 text-2xl font-bold tracking-tight text-brand-deep">Here to help.</p>
+      <p className="mt-1 text-sm text-ink-soft">A conversation away, 24/7.</p>
+
+      <div className="mt-6 min-h-0 w-full flex-1 overflow-y-auto rounded-lg border border-line bg-canvas/60 px-3 py-4">
         <NotificationHistory notifications={notifications} />
       </div>
 
@@ -62,7 +70,7 @@ export function PhoneIdleScreen({ caller, bank_name, call_mode, call_blocked_rea
         >
           <Phone className="size-8" fill="currentColor" aria-hidden />
         </button>
-        <p className="text-sm font-medium" role="status">
+        <p className="text-sm font-semibold text-brand-deep" role="status">
           {describeCallState({ call_mode, is_connecting, has_just_ended, bank_name })}
         </p>
         {call_blocked_reason ? (

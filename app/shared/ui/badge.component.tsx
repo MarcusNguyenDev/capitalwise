@@ -10,8 +10,8 @@ const TONE_CLASS_NAMES: Record<BadgeTone, string> = {
   positive: "bg-positive-soft text-positive",
   attention: "bg-warning-soft text-warning",
   info: "bg-info-soft text-info",
-  danger: "bg-accent-soft text-accent",
-  strong: "bg-ink text-white",
+  danger: "bg-danger-soft text-danger",
+  strong: "bg-brand-deep text-white",
 };
 
 const DOT_CLASS_NAMES: Record<BadgeTone, string> = {
@@ -19,7 +19,7 @@ const DOT_CLASS_NAMES: Record<BadgeTone, string> = {
   positive: "bg-positive",
   attention: "bg-warning",
   info: "bg-info",
-  danger: "bg-accent",
+  danger: "bg-danger",
   strong: "bg-white",
 };
 

@@ -68,7 +68,7 @@ export function SegmentedControl<Value extends string | number>({
             className={joinClassNames(
               "inline-flex items-center gap-1.5 rounded font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
               SIZE_CLASS_NAMES[size],
-              is_checked ? "bg-white text-ink shadow-card" : "text-ink-soft hover:text-ink",
+              is_checked ? "bg-brand-deep text-white shadow-card" : "text-ink-soft hover:text-brand-deep",
             )}
           >
             {option.label}

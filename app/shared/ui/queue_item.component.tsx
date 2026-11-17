@@ -25,7 +25,7 @@ export function QueueItem({ item_id, is_selected, is_highlighted, accent = null,
         onClick={onOpen}
         className={joinClassNames(
           "relative block w-full border-b border-line px-4 py-3 text-left transition-colors focus-visible:rounded-none focus-visible:outline-offset-[-2px]",
-          is_selected ? "bg-info-soft/60" : "hover:bg-canvas",
+          is_selected ? "bg-accent-soft ring-1 ring-inset ring-accent/20" : "hover:bg-canvas",
           is_highlighted && !is_selected && "bg-canvas",
           is_muted && "opacity-60",
         )}

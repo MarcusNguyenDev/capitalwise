@@ -19,7 +19,7 @@ interface PhoneFrameProps {
  */
 export function PhoneFrame({ current_time_ms, is_dark_screen, banners, children }: PhoneFrameProps) {
   return (
-    <div className="relative flex h-full w-full flex-col md:h-[820px] md:w-[400px] md:shrink-0 md:rounded-[3.4rem] md:bg-ink md:p-3 md:shadow-overlay">
+    <div className="relative flex h-full w-full flex-col md:h-[min(820px,calc(100dvh-64px))] md:min-h-[680px] md:w-[360px] md:shrink-0 md:rounded-[3.4rem] md:bg-brand-deep md:p-3 md:shadow-overlay lg:w-[400px]">
       <div
         className={joinClassNames(
           "relative flex h-full flex-col overflow-hidden transition-colors md:rounded-[2.7rem]",

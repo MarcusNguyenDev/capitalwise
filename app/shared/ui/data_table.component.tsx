@@ -25,12 +25,12 @@ export function DataTable<Row>({ caption, columns, rows, readRowKey, footer }: D
       <table className="w-full border-collapse text-left text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr className="border-b border-line">
+          <tr className="border-b border-line bg-surface">
             {columns.map((column) => (
               <th
                 key={column.key}
                 scope="col"
-                className={joinClassNames("whitespace-nowrap py-2 pr-4 text-xs font-semibold text-ink-faint last:pr-0", column.is_numeric && "text-right")}
+                className={joinClassNames("whitespace-nowrap py-3 pr-4 text-xs font-semibold text-brand-deep first:pl-2 last:pr-2", column.is_numeric && "text-right")}
               >
                 {column.header}
               </th>
@@ -39,9 +39,9 @@ export function DataTable<Row>({ caption, columns, rows, readRowKey, footer }: D
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={readRowKey(row)} className="border-b border-line align-top last:border-b-0">
+            <tr key={readRowKey(row)} className="border-b border-line align-top transition-colors last:border-b-0 hover:bg-surface">
               {columns.map((column) => (
-                <td key={column.key} className={joinClassNames("py-2.5 pr-4 last:pr-0", column.is_numeric && "text-right tabular-nums", column.class_name)}>
+                <td key={column.key} className={joinClassNames("py-3.5 pr-4 first:pl-2 last:pr-2", column.is_numeric && "text-right tabular-nums", column.class_name)}>
                   {column.renderCell(row)}
                 </td>
               ))}
