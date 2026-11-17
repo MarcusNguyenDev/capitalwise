@@ -1,9 +1,8 @@
 @import "tailwindcss";
 
 /*
- * Westpac GEL light-theme primitives, mapped to the console's existing roles.
- * Research and composition rules: docs/westpac-design-reference.md.
- * Status uses GEL's reserved palette independently of the brand accent.
+ * Light-theme primitives, mapped to the console's existing roles.
+ * Status colours are kept independent of the brand accent.
  */
 @theme {
   --color-accent: #da1710;

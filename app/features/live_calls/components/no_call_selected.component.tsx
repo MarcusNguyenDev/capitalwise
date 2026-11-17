@@ -1,5 +1,4 @@
-import { AudioLines, MessageSquareText, UserRoundCheck } from "lucide-react";
-import Image from "next/image";
+import { AudioLines, Headset, MessageSquareText, UserRoundCheck } from "lucide-react";
 
 import type { LiveCall } from "@/shared/types/call.type";
 import { Button } from "@/shared/ui/button.component";
@@ -10,7 +9,7 @@ export function NoCallSelected({ next_attention_call, onOpen }: { next_attention
   return (
     <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center sm:px-10">
       <div className="mb-6 flex size-28 shrink-0 items-center justify-center rounded-full bg-brand-soft">
-        <Image src="/brand/westpac-headset.svg" width={70} height={70} alt="" />
+        <Headset className="size-14 text-brand-deep" strokeWidth={1.5} aria-hidden />
       </div>
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-ink-faint">Human care. AI support.</p>
       <h2 className="mt-3 max-w-md text-2xl font-bold leading-tight tracking-tight text-brand-deep">

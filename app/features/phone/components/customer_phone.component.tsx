@@ -1,7 +1,6 @@
 "use client";
 
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
-import Image from "next/image";
+import { ChevronDown, Headset, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { PROJECT_LABEL } from "@/shared/brand/project_label.constant";
@@ -108,14 +107,6 @@ export function CustomerPhone() {
 
   return (
     <main className="relative isolate flex h-dvh flex-col bg-white md:h-auto md:min-h-dvh md:flex-row md:items-center md:justify-center md:gap-8 md:overflow-x-clip md:bg-brand-soft md:px-6 md:py-8 lg:gap-20">
-      <Image
-        src="/brand/westpac-background.svg"
-        width={684}
-        height={456}
-        alt=""
-        aria-hidden
-        className="pointer-events-none absolute -right-36 bottom-0 -z-10 hidden w-[44rem] max-w-none opacity-[0.07] md:block"
-      />
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-white px-3 py-2 md:hidden">
         <button
           type="button"
@@ -141,7 +132,7 @@ export function CustomerPhone() {
         </div>
         <div className="mb-7">
           <div className="mb-4 flex items-center gap-3">
-            <Image src="/brand/westpac-headset.svg" width={42} height={42} alt="" aria-hidden />
+            <Headset className="size-10 text-brand-deep" strokeWidth={1.5} aria-hidden />
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-deep">Customer phone</p>
           </div>
           <h1 className="text-3xl font-bold leading-tight tracking-tight text-brand-deep lg:text-4xl">A little help.<br />A real conversation.</h1>
