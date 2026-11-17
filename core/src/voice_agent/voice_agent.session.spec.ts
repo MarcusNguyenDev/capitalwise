@@ -885,6 +885,49 @@ describe('VoiceAgentSession', () => {
     expect(tool_lists[tool_lists.length - 2]).toContain('update_call_insight');
   });
 
+  it('waits for the answer after a question asked alongside a silent tool, instead of asking it again', async () => {
+    harness = buildHarness();
+    const question = "Thanks, Riley. What's your date of birth?";
+    harness.scripted_replies.push(
+      {
+        events: [
+          { type: 'text_delta', text: question },
+          ...toolReply('get_caller_context').events,
+        ],
+      },
+      textReply("And what's the postcode where you live?"),
+    );
+    await harness.joinAndWaitForGreeting();
+
+    harness.sayToAgent('My name is Riley Hughes. I lost my card.');
+    await waitFor(
+      () => harness.recorded_turns.some((turn) => turn.text === question),
+      'the date of birth question',
+    );
+    await harness.session.waitUntilSettled();
+    const ai_texts = () =>
+      harness.recorded_turns
+        .filter((turn) => turn.speaker === 'AI')
+        .map((turn) => turn.text);
+    expect(ai_texts()).toEqual([buildGreeting('Demo Bank'), question]);
+
+    harness.sayToAgent('Nineteenth of July 1990.');
+    await waitFor(
+      () => ai_texts().includes("And what's the postcode where you live?"),
+      'the next question once the caller answered',
+    );
+    // The silent tool's result was in the history before the next round.
+    expect(
+      harness.chat_requests
+        .at(-1)
+        ?.messages.some(
+          (chat_message) =>
+            chat_message.role === 'tool' &&
+            chat_message.name === 'get_caller_context',
+        ),
+    ).toBe(true);
+  });
+
   it('stops everything on END_CALL and ignores the caller afterwards', async () => {
     harness = buildHarness();
     await harness.joinAndWaitForGreeting();

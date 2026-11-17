@@ -63,7 +63,7 @@ Each capability is routed to a provider in `core/.env`: `AI_CHAT_PROVIDER` / `AI
 | `src/scripted_calls` | serves `scripted_calls/*.json` to the phone client |
 | `src/call_scripts` | script format, loader and `{{placeholder}}` resolver shared by both |
 | `src/engine_api` | the one HTTP client to the `api` service |
-| `src/prompts`, `prompts/voice_agent.md` | the agent instructions (database row is live, file is the reviewed copy, version 1.4; core warns at startup if they differ) |
+| `src/prompts`, `prompts/voice_agent.md` | the agent instructions (database row is live, file is the reviewed copy, version 1.5; core warns at startup if they differ) |
 | `src/database`, `src/audit`, `src/config`, `src/shared_kernel`, `src/health` | plumbing |
 
 ## Conversation and identity (prompt 1.4)

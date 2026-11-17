@@ -72,6 +72,15 @@ const WARM_UP_TIMEOUT_MS = 120_000;
 const ERROR_HELP_REASON =
   'The AI specialist hit a system problem and could not continue the conversation.';
 
+// A reply that ends by asking the caller something ("…your date of birth?").
+const QUESTION_ENDING_PATTERN = /\?["'”’)]*$/;
+
+// What one model call produced: the words spoken and the tools it asked for.
+interface ModelRound {
+  tool_calls: ChatToolCall[];
+  reply_text: string;
+}
+
 interface ActiveResponse {
   abort_controller: AbortController;
   speaker: ResponseSpeaker;
@@ -544,13 +553,14 @@ export class VoiceAgentSession {
     let insight_only_round_count = 0;
     let is_insight_used = false;
     while (this.canSpeak() && !this.is_generation_stopped) {
-      const tool_calls = await this.runModelRound(
+      const model_round = await this.runModelRound(
         turn_timing,
         this.listToolsForRound(!is_insight_used),
       );
-      if (!tool_calls || tool_calls.length === 0) {
+      if (!model_round || model_round.tool_calls.length === 0) {
         return;
       }
+      const { tool_calls } = model_round;
       const is_insight_only = tool_calls.every(
         (tool_call) => tool_call.name === CALL_INSIGHT_TOOL_NAME,
       );
@@ -582,6 +592,8 @@ export class VoiceAgentSession {
         if (turn_timing.is_latency_recorded) {
           Object.assign(turn_timing, late_turn_timing);
         }
+      } else if (this.isWaitingForCaller(model_round)) {
+        return;
       }
     }
   }
@@ -597,10 +609,22 @@ export class VoiceAgentSession {
 
   // One streamed model call, spoken while it streams. Returns the tool calls
   // to run next, or null when the reply was interrupted or failed.
+  // The reply asked the caller something and its tools were silent ones
+  // (context, insight, identity): the caller has the floor. Another model
+  // round now would only ask the same question again.
+  private isWaitingForCaller(model_round: ModelRound): boolean {
+    return (
+      QUESTION_ENDING_PATTERN.test(model_round.reply_text) &&
+      this.dependencies.hold_policy.findHoldReason(
+        model_round.tool_calls.map((tool_call) => tool_call.name),
+      ) === null
+    );
+  }
+
   private async runModelRound(
     turn_timing: TurnTiming,
     round_tools: ChatToolDefinition[] = this.dependencies.settings.tools,
-  ): Promise<ChatToolCall[] | null> {
+  ): Promise<ModelRound | null> {
     const active_response = this.beginResponse(turn_timing);
     try {
       return await this.streamModelReply(
@@ -617,7 +641,7 @@ export class VoiceAgentSession {
     active_response: ActiveResponse,
     turn_timing: TurnTiming,
     round_tools: ChatToolDefinition[],
-  ): Promise<ChatToolCall[] | null> {
+  ): Promise<ModelRound | null> {
     const item_id = `${this.call_id}_ai_${this.response_count}`;
     const tool_calls: ChatToolCall[] = [];
     let usage: ChatUsage | null = null;
@@ -654,7 +678,7 @@ export class VoiceAgentSession {
       return null;
     }
     await this.recordReply(active_response, tool_calls, turn_timing);
-    return tool_calls;
+    return { tool_calls, reply_text: active_response.speaker.readFullText() };
   }
 
   private beginResponse(turn_timing: TurnTiming): ActiveResponse {
