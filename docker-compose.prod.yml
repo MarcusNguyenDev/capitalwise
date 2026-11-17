@@ -1,0 +1,255 @@
+# capitalwise — production stack, one file, one server, behind the host's nginx.
+#
+# Only 443/tcp is open to the world. nginx owns it and splits it by TLS name
+# (SNI) before any HTTP happens — see nginx/stream.conf and nginx/marcusnguyen.dev.conf:
+#
+#   <DOMAIN>        → nginx's https site → /api, /core, /socket.io, /rtc, app
+#   <TURN_DOMAIN>   → LiveKit's TURN server (call audio, TLS ended by nginx)
+#
+# Call audio cannot use LiveKit's usual 7881/tcp and 7882/udp from outside, so
+# browsers are handed `turns:<TURN_DOMAIN>:443` and relay through TURN. core's
+# own audio peer stays inside the Docker network and never leaves the host.
+#
+# Ports. Containers keep their usual ports; the host side uses 3451-3455.
+# Every one is bound to 127.0.0.1, so only nginx on this host can reach it
+# (Docker-published ports otherwise bypass ufw/iptables rules).
+#
+#   host            container    service  nginx sends
+#   127.0.0.1:3451  3000         app      /            (Next.js)
+#   127.0.0.1:3452  3002         api      /api/
+#   127.0.0.1:3453  3001         core     /core/, /socket.io/  (WebSocket)
+#   127.0.0.1:3454  7880         media    /rtc         (LiveKit signalling, WebSocket)
+#   127.0.0.1:3455  5349         media    TURN_DOMAIN  (TURN, plain TCP after nginx ends TLS)
+#
+# Not published (in-network only): db 5432, cache 6379, speech 8000,
+# media 7881/tcp + 7882/udp (core's audio peer).
+#
+# Before the first start:
+#   1. DNS: A records for DOMAIN and TURN_DOMAIN → this server; one cert that
+#      covers both names (or two certs).
+#   2. Root .env: DOMAIN, TURN_DOMAIN, and real DB_PASSWORD, CACHE_PASSWORD,
+#      MEDIA_API_KEY, MEDIA_API_SECRET (32+ chars).
+#   3. api/.env and core/.env: same credentials as the root .env (hosts and
+#      ports are overridden below, so only users/passwords/keys matter).
+#   4. app/.env.production (read at BUILD time, inlined into the bundle):
+#        NEXT_PUBLIC_API_URL=https://<DOMAIN>
+#        NEXT_PUBLIC_CORE_URL=https://<DOMAIN>
+#   5. nginx: install the files in nginx/ (each header says where).
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f
+#   docker compose -f docker-compose.prod.yml down          # volumes are kept
+#
+# Self-hosted speech (Speaches) is opt-in: add `--profile speech`.
+
+name: capitalwise-prod
+
+services:
+  # ── Applications ──────────────────────────────────────────────────────────
+  app:
+    build:
+      context: ./app
+      target: production
+      # NEXT_PUBLIC_* are inlined by `next build`; the Dockerfile mounts this
+      # as /client/.env for the build step only.
+      secrets:
+        - fe_env
+    image: capitalwise/app:prod
+    restart: unless-stopped
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3451:3000"
+    networks:
+      - capitalwise
+
+  api:
+    build:
+      context: ./api
+      target: production
+    image: capitalwise/api:prod
+    restart: unless-stopped
+    env_file:
+      - ./api/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DB_HOST: db
+      DB_PORT: "5432"
+      CACHE_HOST: cache
+      CACHE_PORT: "6379"
+      # Demo reset re-runs the SQL; the image has no ../db, so mount it.
+      DB_SQL_DIR: /db
+    volumes:
+      - ./db:/db:ro
+    ports:
+      - "127.0.0.1:3452:3002"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3002/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+  core:
+    build:
+      context: ./core
+      target: production
+    image: capitalwise/core:prod
+    restart: unless-stopped
+    env_file:
+      - ./core/.env
+    environment:
+      NODE_ENV: production
+      # core reads CORE_PORT before PORT, and core/.env sets it to 3001.
+      PORT: "3001"
+      CORE_PORT: "3001"
+      API_INTERNAL_URL: http://api:3002
+      DB_HOST: db
+      DB_PORT: "5432"
+      CACHE_HOST: cache
+      CACHE_PORT: "6379"
+      # core's audio peer joins in-network; browsers go through nginx (/rtc).
+      LIVEKIT_URL: ws://media:7880
+      LIVEKIT_PUBLIC_URL: wss://${DOMAIN:?set DOMAIN in .env}
+      SPEACHES_BASE_URL: http://speech:8000/v1
+      PHRASE_AUDIO_CACHE_DIR: /api/.cache/phrase_audio
+    volumes:
+      - core-phrase-audio:/api/.cache
+    ports:
+      - "127.0.0.1:3453:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/core/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env}
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+  cache:
+    image: redis:8
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${CACHE_PASSWORD:?set CACHE_PASSWORD in .env}", "--appendonly", "yes"]
+    environment:
+      REDISCLI_AUTH: ${CACHE_PASSWORD}
+    volumes:
+      - cache-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - capitalwise
+
+  media:
+    image: livekit/livekit-server:v1.13
+    restart: unless-stopped
+    # No --node-ip: LiveKit advertises its container address, which only core
+    # (same network) uses directly. Browsers reach it as a TURN relay.
+    command: ["--bind=0.0.0.0"]
+    environment:
+      LIVEKIT_KEYS: "${MEDIA_API_KEY:?set MEDIA_API_KEY in .env}: ${MEDIA_API_SECRET:?set MEDIA_API_SECRET in .env}"
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          # In-network only (core's peer). Not published.
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+        turn:
+          enabled: true
+          # LiveKit hands browsers `turns:<domain>:443?transport=tcp`.
+          domain: ${TURN_DOMAIN:?set TURN_DOMAIN in .env}
+          # nginx ends TLS and forwards plain TCP here.
+          tls_port: 5349
+          external_tls: true
+          # LiveKit's own media port is on a private Docker address, which TURN
+          # refuses to relay to by default ("restricted peer"). Embedded TURN
+          # only relays to this node's own IPs and media ports anyway.
+          allow_restricted_peer_cidrs:
+            - 172.16.0.0/12
+    ports:
+      - "127.0.0.1:3454:7880"
+      - "127.0.0.1:3455:5349"
+    networks:
+      - capitalwise
+
+  # Only needed when core/.env uses the `speaches` provider.
+  speech:
+    profiles: ["speech"]
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: unless-stopped
+    volumes:
+      - speech-models:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - capitalwise
+
+  speech-models:
+    profiles: ["speech"]
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: "no"
+    depends_on:
+      speech:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        for model_id in ${SPEECH_MODELS:-Systran/faster-whisper-small.en speaches-ai/Kokoro-82M-v1.0-ONNX}; do
+        curl -fsS -X POST "http://speech:8000/v1/models/$$model_id" && echo; done
+    networks:
+      - capitalwise
+
+secrets:
+  fe_env:
+    file: ./app/.env.production
+
+volumes:
+  db-data:
+  cache-data:
+  core-phrase-audio:
+  speech-models:
+
+networks:
+  capitalwise:
+    # Its own name, so a dev stack on the same machine is untouched.
+    name: capitalwise-prod
+    driver: bridge
