@@ -123,7 +123,10 @@ export function CustomerPhone() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Demo controls</p>
           <h1 className="mt-1 text-xl font-semibold">Customer phone</h1>
-          <p className="mt-1 text-sm text-ink-soft">The bank recognises the caller&apos;s number and confirms who they are with a push to their banking app.</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            The AI asks who is calling and confirms identity in conversation: name, date of birth and postcode, plus one question about recent activity when the
+            task needs it. Works from any phone, no app needed.
+          </p>
         </div>
         <div className="rounded-lg border border-line bg-white p-4 shadow-card">{demo_controls}</div>
         <p className="text-xs text-ink-faint">Prototype, mock data only</p>

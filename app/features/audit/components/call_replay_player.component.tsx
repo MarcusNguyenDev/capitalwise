@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { formatDateTime, formatDuration } from "@/shared/format/format_values.util";
+import { CallIdentityBadge } from "@/shared/status/call_identity_badge.component";
+import { UNIDENTIFIED_CALLER_NAME } from "@/shared/status/status_wording.constant";
 import type { CallTimeline } from "@/shared/types/case.type";
 import { EmptyState } from "@/shared/ui/empty_state.component";
 import { IconButton } from "@/shared/ui/icon_button.component";
@@ -30,7 +32,10 @@ export function CallReplayPlayer({ timeline, onClose }: { timeline: CallTimeline
       <header className="flex items-start gap-4 border-b border-line px-5 py-3.5">
         <IconButton label="Back to the list" icon={<ArrowLeft className="size-4" aria-hidden />} onClick={onClose} className="lg:hidden" />
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{timeline.call.customer_name ?? "Unknown caller"}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">{timeline.call.customer_name ?? UNIDENTIFIED_CALLER_NAME}</h2>
+            {timeline.call.identity_level === undefined ? null : <CallIdentityBadge call={{ ...timeline.call, identity_verified: timeline.call.identity_verified ?? false }} />}
+          </div>
           <p className="text-sm text-ink-soft">
             {timeline.call.intent ?? "No intent recorded"} · {formatDateTime(timeline.call.started_at)} · {formatDuration(timeline.call.duration_seconds)} call. Long
             silences are shortened.

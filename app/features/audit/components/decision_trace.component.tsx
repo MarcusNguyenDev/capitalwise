@@ -7,12 +7,14 @@ import { EvidenceTable } from "@/features/approvals/components/evidence_table.co
 import { formatCodeLabel, formatDateTime } from "@/shared/format/format_values.util";
 import { listCustomerQuotes } from "@/shared/format/list_customer_quotes.util";
 import { CaseStatusBadge } from "@/shared/status/case_status_badge.component";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import type { DecisionExplanation } from "@/shared/types/case.type";
 import { Badge } from "@/shared/ui/badge.component";
 import { Card } from "@/shared/ui/card.component";
 import { Disclosure } from "@/shared/ui/disclosure.component";
 import { IconButton } from "@/shared/ui/icon_button.component";
 
+import { describeAuditEvent } from "../utils/describe_audit_event.util";
 import { CustomerExplanationDialog } from "./customer_explanation_dialog.component";
 import { DecisionOutcomeSummary } from "./decision_outcome_summary.component";
 import { ExplainedRuleCard } from "./explained_rule_card.component";
@@ -62,7 +64,7 @@ function CaseAuditTrail({ explanation }: ExplanationPart) {
           <li key={audit_event.event_id} className="grid grid-cols-[8.5rem_minmax(0,12rem)_1fr] gap-3 border-b border-line py-1.5 last:border-b-0">
             <span className="tabular-nums text-ink-soft">{formatDateTime(audit_event.occurred_at)}</span>
             <span className="truncate">{audit_event.actor_name ?? audit_event.actor_id ?? formatCodeLabel(audit_event.actor_type)}</span>
-            <span>{formatCodeLabel(audit_event.event_type)}</span>
+            <span>{describeAuditEvent(audit_event)}</span>
           </li>
         ))}
       </ol>
@@ -84,7 +86,7 @@ export function DecisionTrace({ explanation, onClose }: ExplanationPart & { onCl
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold">
-              {engine_case.customer_name}: {formatCodeLabel(engine_case.action_code).toLowerCase()}
+              {engine_case.customer_name}: {formatActionLabel(engine_case.action_code).toLowerCase()}
             </h2>
             <CaseStatusBadge status={engine_case.status} />
           </div>

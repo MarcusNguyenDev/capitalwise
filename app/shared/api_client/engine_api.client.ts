@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from "@/shared/config/service_urls.config";
 import { requestJson } from "@/shared/http/request_json.util";
+import type { CallIdentityRecord } from "@/shared/types/call.type";
 import type {
   AuditEventFilter,
   AuditEventPage,
@@ -54,6 +55,9 @@ export interface CaseListFilter {
 // Demo
 export const fetchDemoConfig = () => callApi<DemoConfig>({ path: "/demo/config" });
 export const resetDemo = () => callApi<{ is_reset: boolean }>({ path: "/demo/reset", method: "POST", body: {} });
+
+// Identity (the api's authoritative record of the knowledge checks on a call)
+export const fetchCallIdentity = (call_id: string) => callApi<CallIdentityRecord>({ path: `/identity/calls/${call_id}` });
 
 // Banking (read-only views through the core banking adapter)
 export const fetchCallers = () => callApi<Caller[]>({ path: "/banking/callers" });

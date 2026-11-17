@@ -5,6 +5,7 @@ import { CallRecordsModule } from '../call_records/call_records.module';
 import { CoreBankingModule } from '../core_banking/core_banking.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { FactsModule } from '../facts/facts.module';
+import { IdentityRecordsModule } from '../identity_records/identity_records.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PoliciesModule } from '../policies/policies.module';
 import { RoutingModule } from '../routing/routing.module';
@@ -27,6 +28,7 @@ import { ProposalsService } from './proposals.service';
     CoreBankingModule,
     ExecutionModule,
     FactsModule,
+    IdentityRecordsModule,
     NotificationsModule,
     PoliciesModule,
     RoutingModule,
@@ -43,6 +45,6 @@ import { ProposalsService } from './proposals.service';
     DecisionsService,
     CasesService,
   ],
-  exports: [CasesRepository, CasesService, DecisionsService],
+  exports: [CasesRepository, CasesService, DecisionsService, CaseIntakeService],
 })
 export class CasesModule {}

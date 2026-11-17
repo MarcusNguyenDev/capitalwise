@@ -9,8 +9,10 @@ import { resolveScriptArguments, resolveScriptPlaceholders } from "./resolve_scr
 import {
   AI_THINKING_PAUSE_MAX_MS,
   AI_THINKING_PAUSE_MIN_MS,
+  APP_IDENTITY_CHECK_TOOL_NAME,
   CALL_INSIGHT_TOOL_NAME,
-  IDENTITY_PUSH_TOOL_NAME,
+  IDENTITY_ANSWERS_TOOL_NAME,
+  IDENTITY_LOCKED_LINE,
   UNVERIFIED_CALLER_LINE,
 } from "./scripted_call.constant";
 
@@ -173,15 +175,25 @@ export class ScriptedCallRunner implements PhoneCallSession {
     if (tool_response.ok) {
       this.placeholder_values[tool_name] = tool_response.result;
     }
-    if (tool_name === IDENTITY_PUSH_TOOL_NAME) {
+    if (tool_name === APP_IDENTITY_CHECK_TOOL_NAME) {
       // The wait for the customer to tap Approve is not AI response time.
       this.customer_speech_ended_at = null;
       const is_verified = tool_response.ok && tool_response.result.verified === true;
-      if (!is_verified && !this.is_stopped) {
-        this.is_ending_early = true;
-        await this.speakAsAi(UNVERIFIED_CALLER_LINE);
-      }
+      await this.endEarlyUnless(is_verified, UNVERIFIED_CALLER_LINE);
     }
+    if (tool_name === IDENTITY_ANSWERS_TOOL_NAME) {
+      const is_locked = tool_response.ok ? tool_response.result.is_locked === true : tool_response.error.code === "IDENTITY_LOCKED";
+      await this.endEarlyUnless(!is_locked, IDENTITY_LOCKED_LINE);
+    }
+  }
+
+  /** The script's next lines assume the check passed; when it did not, the AI says why and the call ends. */
+  private async endEarlyUnless(has_passed: boolean, closing_line: string): Promise<void> {
+    if (has_passed || this.is_stopped) {
+      return;
+    }
+    this.is_ending_early = true;
+    await this.speakAsAi(closing_line);
   }
 
   private async awaitInstruction(step: Extract<ScriptStep, { type: "await_instruction" }>): Promise<void> {

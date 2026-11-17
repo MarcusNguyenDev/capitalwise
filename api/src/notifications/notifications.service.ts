@@ -5,6 +5,9 @@ import { AUDIT_EVENT_TYPES } from '../audit/constants/audit_event_type.constant'
 import { CallRecordsService } from '../call_records/call_records.service';
 import { CallerNotMatchedError } from '../call_records/errors/caller_not_matched.error';
 import { DatabaseService } from '../database/database.service';
+import { IDENTITY_METHODS } from '../identity_records/constants/identity_level.constant';
+import { IdentityLockedError } from '../identity_records/errors/identity_locked.error';
+import { IdentityRecordsService } from '../identity_records/identity_records.service';
 import { TransactionClient } from '../database/types/transaction_client.type';
 import { SYSTEM_ACTOR } from '../shared_kernel/constants/system_actor.constant';
 import { clampLimit } from '../shared_kernel/utils/clamp_limit.util';
@@ -24,7 +27,7 @@ import { NotificationsRepository } from './notifications.repository';
 import { NotifierService } from './notifier.service';
 import { NotificationRecord } from './types/notification.type';
 
-const IDENTITY_METHOD = 'CALLER_ID_PLUS_APP_PUSH';
+const APP_PUSH_LEVEL = 1;
 
 @Injectable()
 export class NotificationsService {
@@ -33,16 +36,23 @@ export class NotificationsService {
     private readonly notifications_repository: NotificationsRepository,
     private readonly notifier_service: NotifierService,
     private readonly call_records_service: CallRecordsService,
+    private readonly identity_records_service: IdentityRecordsService,
     private readonly audit_recorder_service: AuditRecorderService,
   ) {}
 
-  // No voice-only identity: the caller ID match is confirmed by a push to the
-  // customer's own banking app.
+  // The optional app check (send_app_identity_check), for callers who prefer
+  // it: the caller-ID customer approves a push in their own banking app. It
+  // grants identity level 1 only.
   async sendIdentityCheck(call_id: string): Promise<NotificationRecord> {
     const call_record = await this.call_records_service.getCall(call_id);
     const customer_id = call_record.customer_id;
     if (!customer_id) {
       throw new CallerNotMatchedError(call_id);
+    }
+    const identity_summary =
+      await this.identity_records_service.summariseCall(call_id);
+    if (identity_summary.is_locked) {
+      throw new IdentityLockedError(call_id);
     }
     const notification = await this.database.runInTransaction(
       { actor_type: 'AI', actor_id: call_record.handled_by_agent_id },
@@ -78,11 +88,22 @@ export class NotificationsService {
             notification_id,
             response,
           );
-        if (response === 'APPROVED') {
+        if (response === 'APPROVED' && locked_notification.call_id) {
+          await this.identity_records_service.recordAppPushVerification(
+            transaction,
+            {
+              call_id: locked_notification.call_id,
+              customer_id: locked_notification.customer_id,
+            },
+          );
           await this.audit_recorder_service.recordEvent(transaction, {
             event_type: AUDIT_EVENT_TYPES.IDENTITY_VERIFIED,
             call_id: locked_notification.call_id,
-            detail: { method: IDENTITY_METHOD, notification_id },
+            detail: {
+              method: IDENTITY_METHODS.APP_PUSH,
+              level: APP_PUSH_LEVEL,
+              notification_id,
+            },
           });
         }
         return responded_notification;

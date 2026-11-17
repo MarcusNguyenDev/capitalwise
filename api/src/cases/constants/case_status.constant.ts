@@ -1,5 +1,8 @@
 export const CASE_STATUSES = {
   AUTO_EXECUTED: 'AUTO_EXECUTED',
+  // The policy declined on the spot (route AUTO, recommend DECLINE). Nothing
+  // is executed; the customer can ask for a specialist review.
+  AUTO_DECLINED: 'AUTO_DECLINED',
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   ESCALATED: 'ESCALATED',
   APPROVED: 'APPROVED',
@@ -18,11 +21,17 @@ export const UNDECIDED_STATUSES: string[] = [
 export const DUPLICATE_GUARD_STATUSES: string[] = [
   ...UNDECIDED_STATUSES,
   CASE_STATUSES.AUTO_EXECUTED,
+  CASE_STATUSES.AUTO_DECLINED,
 ];
 
 export const EXECUTED_STATUSES: string[] = [
   CASE_STATUSES.AUTO_EXECUTED,
   CASE_STATUSES.EXECUTED,
+];
+
+export const DECLINED_STATUSES: string[] = [
+  CASE_STATUSES.AUTO_DECLINED,
+  CASE_STATUSES.REJECTED,
 ];
 
 export const DEFAULT_CASE_LIMIT = 50;

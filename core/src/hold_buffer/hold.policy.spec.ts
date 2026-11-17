@@ -28,7 +28,12 @@ describe('tool hold classes', () => {
   it('classifies silent, app-approval and system-check tools', () => {
     expect(classifyToolHold('get_caller_context')).toBe(ToolHoldClass.SILENT);
     expect(classifyToolHold('update_call_insight')).toBe(ToolHoldClass.SILENT);
-    expect(classifyToolHold('send_identity_push')).toBe(
+    // Identity questions are part of the conversation, never a hold.
+    expect(classifyToolHold('start_identity_check')).toBe(ToolHoldClass.SILENT);
+    expect(classifyToolHold('submit_identity_answers')).toBe(
+      ToolHoldClass.SILENT,
+    );
+    expect(classifyToolHold('send_app_identity_check')).toBe(
       ToolHoldClass.APP_APPROVAL,
     );
     for (const tool_name of [
@@ -52,7 +57,7 @@ describe('tool hold classes', () => {
       'CHECKING_SYSTEM',
     );
     expect(
-      findHoldReason(['get_customer_overview', 'send_identity_push']),
+      findHoldReason(['get_customer_overview', 'send_app_identity_check']),
     ).toBe('WAITING_FOR_APP_APPROVAL');
   });
 });

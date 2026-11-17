@@ -20,6 +20,7 @@ export interface PolicyEvaluation {
   matched_rule_id: string;
   reason: string;
   proposal?: Record<string, unknown>;
+  skill?: string;
   conditions_evaluated: ConditionEvaluation[];
 }
 
@@ -31,5 +32,6 @@ export interface RuleExplanation {
   recommend: PolicyRecommendation;
   confidence: number;
   reason: string;
+  skill?: string;
   conditions: ConditionEvaluation[];
 }

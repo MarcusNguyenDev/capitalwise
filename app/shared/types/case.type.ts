@@ -1,8 +1,23 @@
-import type { CallTurn, Intervention } from "./call.type";
+import type { CallTurn, Intervention, LiveCall } from "./call.type";
 
-export type ActionCode = "LOCK_CARD" | "REFUND_FEE" | "HARDSHIP_REQUEST" | "RELEASE_HELD_PAYMENT" | "HUMAN_CALLBACK";
+export type ActionCode =
+  | "LOCK_CARD"
+  | "REPORT_LOST_STOLEN"
+  | "UNLOCK_CARD"
+  | "REPLACE_CARD"
+  | "ACTIVATE_CARD"
+  | "REFUND_FEE"
+  | "RAISE_DISPUTE"
+  | "REQUEST_STATEMENT"
+  | "UPDATE_PREFERENCES"
+  | "PAYMENT_ARRANGEMENT"
+  | "HARDSHIP_REQUEST"
+  | "RELEASE_HELD_PAYMENT"
+  | "SERVICE_REQUEST"
+  | "HUMAN_CALLBACK";
 export type CaseStatus =
   | "AUTO_EXECUTED"
+  | "AUTO_DECLINED"
   | "PENDING_APPROVAL"
   | "ESCALATED"
   | "APPROVED"
@@ -11,6 +26,8 @@ export type CaseStatus =
   | "EXECUTED";
 export type Recommendation = "APPROVE" | "DECLINE" | "ESCALATE";
 export type PolicyRoute = "AUTO" | "APPROVE" | "ESCALATE";
+/** What the AI tells the caller after `propose_action`: done now, declined by policy, with a specialist, or waiting for approval. */
+export type ProposalOutcome = "DONE" | "DECLINED" | "WITH_SPECIALIST" | "PENDING_REVIEW";
 export type CaseDecision = "APPROVED" | "EDITED_AND_APPROVED" | "REJECTED";
 export type RiskClass = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type FactValue = string | number | boolean | null | string[];
@@ -18,6 +35,8 @@ export type FactValue = string | number | boolean | null | string[];
 export interface SoftSignals {
   vulnerability_signals?: string[];
   scam_coaching_signals?: string[];
+  /** Raised by the server, never the model: e.g. IDENTITY_CHECK_FAILED. Counts as high risk. */
+  fraud_signals?: string[];
   quotes?: string[];
 }
 
@@ -34,6 +53,8 @@ export interface PolicyRule {
   recommend: Recommendation;
   confidence: number;
   reason: string;
+  /** Overrides the action's review skill for this rule, e.g. CARE for a vulnerable customer. */
+  skill?: string;
   proposal?: Record<string, unknown>;
 }
 
@@ -126,7 +147,7 @@ export interface CustomerNotification {
   customer_id: string;
   call_id: string | null;
   case_number: string | null;
-  channel: "APP_PUSH" | "SMS";
+  channel: "APP_PUSH" | "SMS" | "LETTER";
   kind: "IDENTITY_CHECK" | "CASE_UPDATE";
   body: string;
   status: "SENT" | "APPROVED" | "DENIED" | "EXPIRED";
@@ -141,6 +162,24 @@ export interface CasePack {
   transcript_excerpt: CallTurn[];
   notifications: CustomerNotification[];
   reason_codes: { approve: ReasonCode[]; reject: ReasonCode[] };
+}
+
+/** The api's answer to `propose_action`, as recorded in the call's tool result. */
+export interface ProposalResult {
+  case_number: string;
+  action_code: ActionCode;
+  tier: 1 | 2 | 3;
+  route: PolicyRoute;
+  status: CaseStatus;
+  outcome: ProposalOutcome;
+  recommendation: Recommendation;
+  confidence: number;
+  matched_rule_id: string;
+  reason: string;
+  is_executed: boolean;
+  execution_result: Record<string, unknown> | null;
+  /** One plain sentence the AI can say to the caller. */
+  customer_message: string;
 }
 
 export interface BatchGroup {
@@ -269,6 +308,8 @@ export interface CallTimelineEvent {
 }
 
 export interface CallTimeline {
-  call: EndedCallSummary & Record<string, unknown>;
+  call: EndedCallSummary &
+    Partial<Pick<LiveCall, "identity_verified" | "identity_level" | "identity_method" | "is_identity_locked" | "identity_failed_attempts">> &
+    Record<string, unknown>;
   events: CallTimelineEvent[];
 }

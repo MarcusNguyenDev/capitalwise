@@ -1,0 +1,31 @@
+{
+  "script_id": "landline_caller",
+  "title": "Grace: statement by post, from a landline not on file",
+  "customer_id": "CUS-2010",
+  "caller_number": "+61755501234",
+  "steps": [
+    { "type": "ai", "text": "Hello, thanks for calling {{bank_name}}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?" },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "customer", "text": "Hello. Grace Papadopoulos. I'm ringing from my home phone." },
+    { "type": "ai", "text": "Thank you, that's no problem at all. How can I help you today?" },
+    { "type": "customer", "text": "My accountant needs my bank statements for the last three months. I don't use the computer, so could you post them to me?" },
+    { "type": "insight", "intent": "Statement by post", "sentiment": "NEUTRAL", "summary": "Caller on a landline not on file wants three months of statements posted for her accountant." },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "ai", "text": "Of course, I can do that for you. First I'll confirm two details, one at a time. What's your date of birth?" },
+    { "type": "customer", "text": "The 29th of March 1968." },
+    { "type": "ai", "text": "Thank you. And the postcode where you live?" },
+    { "type": "customer", "text": "4224, in Tugun." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Grace Papadopoulos"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "29th of March 1968"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4224"}]} },
+    { "type": "ai", "text": "Thank you, {{submit_identity_answers.first_name|Grace}}, that's all confirmed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "tool", "tool_name": "get_customer_overview", "args": {} },
+    { "type": "tool", "tool_name": "propose_action", "args": {"action_code": "REQUEST_STATEMENT", "params": {"account_id": "ACC-20101", "months": 3, "delivery": "POST"}, "summary": "Grace asked for three months of Everyday account statements by post for her accountant. She does not use online banking.", "customer_statement": "My accountant needs my bank statements for the last three months. Could you post them to me?"} },
+    { "type": "ai", "text": "Thanks for holding. {{propose_action.customer_message|Your statements for the last three months are on their way to your address by post.}}" },
+    { "type": "customer", "text": "Lovely. The print's a bit small for me these days, mind you." },
+    { "type": "ai", "text": "I understand. We can send all your letters and statements in large print from now on, if you'd like. I'd just need to ask you one more security question for that. Would you like me to?" },
+    { "type": "customer", "text": "Oh, not today, dear. I'll think about it. Thank you." },
+    { "type": "insight", "intent": "Statement by post", "sentiment": "POSITIVE", "summary": "Caller ID not on file; identity confirmed by questions at level 1. Three months of statements sent by post. Large-print letters offered." },
+    { "type": "ai", "text": "Of course. Just call us any time if you change your mind. Is there anything else I can help with today?" },
+    { "type": "customer", "text": "No, that's everything. You've been very helpful." },
+    { "type": "ai", "text": "It's been a pleasure, Grace. Take care." }
+  ]
+}

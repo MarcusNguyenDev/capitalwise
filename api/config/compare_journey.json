@@ -36,18 +36,18 @@
     "steps": [
       {
         "label": "Answered instantly",
-        "detail": "No menu. The AI specialist picks up and starts talking.",
+        "detail": "No menu. The AI specialist picks up and starts talking, on any phone, including a landline.",
         "duration_seconds": 1,
         "measured_metric": "avg_response_ms"
       },
       {
-        "label": "Caller ID recognised",
-        "detail": "The caller is greeted by name. No account number is asked for.",
-        "duration_seconds": 3
+        "label": "Asked who is calling",
+        "detail": "A warm greeting and one question: the caller's full name. No account number, no passkey, no app needed.",
+        "duration_seconds": 5
       },
       {
-        "label": "Identity confirmed by app push",
-        "detail": "One tap on a notification in the banking app. No passkey, and no voice-only identity.",
+        "label": "Identity confirmed in conversation (name, date of birth, postcode)",
+        "detail": "Checked by the bank's system, not the AI. Anything that moves money or changes the account adds one question about the customer's own recent activity.",
         "duration_seconds": 38,
         "measured_metric": "time_to_identity_ms"
       },

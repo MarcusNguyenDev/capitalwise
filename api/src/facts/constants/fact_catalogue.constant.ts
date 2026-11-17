@@ -8,9 +8,14 @@ const AI_SOFT_SIGNAL_SOURCE = 'AI soft signal (call transcript)';
 // Every fact a policy can reference, with where it comes from. Used for the
 // evidence table in the case pack and the decision explainer.
 export const FACT_CATALOGUE: Record<string, FactDescriptor> = {
+  identity_level: {
+    label:
+      'Identity confirmed to level (0 none, 1 name, date of birth and postcode, 2 plus recent activity)',
+    source: 'engine.identity_attempts',
+  },
   identity_verified: {
-    label: 'Identity verified by app push',
-    source: 'engine.calls',
+    label: 'Identity confirmed (level 1 or more)',
+    source: 'engine.identity_attempts',
   },
   has_care_flag: {
     label: 'Care flag on the customer',
@@ -25,6 +30,74 @@ export const FACT_CATALOGUE: Record<string, FactDescriptor> = {
     label: 'Card status before the request',
     source: 'bank.cards',
   },
+  card_type: { label: 'Card type', source: 'bank.cards' },
+  report_reason: {
+    label: 'Reported lost or stolen',
+    source: 'Caller (checked: LOST or STOLEN)',
+  },
+  address_age_days: {
+    label: 'Days since the postal address changed',
+    source: 'bank.customers',
+  },
+  delivery_suburb: {
+    label: 'Suburb the new card goes to',
+    source: 'bank.customers',
+  },
+  replacements_last_12m: {
+    label: 'Replacement cards in the last 12 months',
+    source: 'bank.card_orders',
+  },
+  txn_id: { label: 'Disputed transaction', source: 'bank.transactions' },
+  txn_amount: { label: 'Disputed amount', source: 'bank.transactions' },
+  txn_status: { label: 'Transaction status', source: 'bank.transactions' },
+  merchant: { label: 'Merchant', source: 'bank.transactions' },
+  dispute_reason: {
+    label: 'Why the caller disputes it',
+    source:
+      'Caller (checked: DUPLICATE, UNRECOGNISED, NOT_RECEIVED or WRONG_AMOUNT)',
+  },
+  is_duplicate_confirmed: {
+    label:
+      'Duplicate confirmed (same merchant and amount, both posted, within 30 minutes)',
+    source: 'bank.transactions',
+  },
+  duplicate_of_txn_id: {
+    label: 'The matching charge',
+    source: 'bank.transactions',
+  },
+  account_id: { label: 'Account', source: 'bank.account_holders' },
+  account_nickname: { label: 'Account name', source: 'bank.accounts' },
+  account_category: { label: 'Account type', source: 'bank.products' },
+  statement_months: {
+    label: 'Months of statements',
+    source: 'Caller (checked: 1 to 12)',
+  },
+  statement_delivery: {
+    label: 'Delivery',
+    source: 'Caller (checked: POST or EMAIL to the details on file)',
+  },
+  is_large_print: {
+    label: 'Large-print letters',
+    source: 'bank.customer_preferences',
+  },
+  requested_preferences: {
+    label: 'Requested contact preferences',
+    source: 'Caller',
+  },
+  current_preferences: {
+    label: 'Contact preferences before the change',
+    source: 'bank.customer_preferences',
+  },
+  arrangement_weeks: {
+    label: 'Weeks of the arrangement',
+    source: 'Caller (checked: 1 to 12)',
+  },
+  weekly_amount: {
+    label: 'Weekly amount offered',
+    source: 'Caller (optional)',
+  },
+  request_type: { label: 'Type of request', source: 'Caller' },
+  request_details: { label: 'Request details', source: 'Caller' },
   fee_txn_id: { label: 'Fee transaction', source: 'bank.v_fee_history' },
   fee_amount: { label: 'Fee amount', source: 'bank.v_fee_history' },
   fee_cause: { label: 'Fee type', source: 'bank.v_fee_history' },
@@ -108,6 +181,10 @@ export const FACT_CATALOGUE: Record<string, FactDescriptor> = {
   reason: {
     label: 'Why a person is needed',
     source: 'AI soft signal (call transcript)',
+  },
+  fraud_signals: {
+    label: 'Fraud signals raised by the system',
+    source: 'engine.identity_attempts',
   },
 };
 

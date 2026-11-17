@@ -44,6 +44,7 @@ import { ConversationHistory } from './conversation.history';
 import { isNoiseTranscript } from './is_noise_transcript.util';
 import { ResponseSpeaker } from './response.speaker';
 import { createTurnTiming, TurnTiming } from './types/turn_timing.type';
+import { localizeTimestamps } from './localize_timestamps.util';
 import {
   VoiceAgentCommand,
   VoiceAgentSessionDependencies,
@@ -127,7 +128,7 @@ export class VoiceAgentSession {
   private last_apology_at_ms = 0;
   private queued_transcription_count = 0;
   private caller_transcriber: CallerTranscriber | null = null;
-  // The opening reply waits for it: on a cold model both would otherwise
+  // The first reply waits for it: on a cold model both would otherwise
   // queue behind each other and time out together.
   private warm_up_done: Promise<void> = Promise.resolve();
   // Set by a cost guard: no more model replies on this call.
@@ -516,9 +517,9 @@ export class VoiceAgentSession {
       tool_calls: [context_call],
     });
     this.addToolResult(context_call, context_outcome);
+    // The greeting ends with a question (the caller's name), so the model
+    // speaks next only after the caller has answered.
     await greeting_done;
-    await this.warm_up_done;
-    await this.respond(createTurnTiming());
   }
 
   private async answerPendingCustomer(): Promise<void> {
@@ -530,6 +531,7 @@ export class VoiceAgentSession {
   }
 
   private async respond(turn_timing: TurnTiming): Promise<void> {
+    await this.warm_up_done;
     let tool_round_count = 0;
     while (this.canSpeak() && !this.is_generation_stopped) {
       const tool_calls = await this.runModelRound(turn_timing);
@@ -546,8 +548,12 @@ export class VoiceAgentSession {
       tool_round_count += 1;
       await this.runToolCallsOnHold(tool_calls, turn_timing);
       const late_turn_timing = this.movePendingCustomerMessagesToHistory();
-      if (late_turn_timing && turn_timing.is_latency_recorded) {
-        Object.assign(turn_timing, late_turn_timing);
+      if (late_turn_timing) {
+        // The caller said something new: it is a new turn with its own budget.
+        tool_round_count = 0;
+        if (turn_timing.is_latency_recorded) {
+          Object.assign(turn_timing, late_turn_timing);
+        }
       }
     }
   }
@@ -926,7 +932,12 @@ export class VoiceAgentSession {
       role: 'tool',
       tool_call_id: tool_call.tool_call_id,
       name: tool_call.name,
-      content: JSON.stringify(tool_outcome),
+      content: JSON.stringify(
+        localizeTimestamps(
+          tool_outcome,
+          this.dependencies.settings.bank_time_zone,
+        ),
+      ),
     });
   }
 

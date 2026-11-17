@@ -7,6 +7,8 @@ export interface ActionType {
   reversible: boolean;
   required_evidence: string[];
   required_skill: string | null;
+  // 0 anyone, 1 name + date of birth + postcode, 2 plus recent activity.
+  required_identity_level: number;
 }
 
 export interface PolicyRecord {

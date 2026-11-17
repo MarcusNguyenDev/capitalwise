@@ -132,6 +132,64 @@ describe('SimulatedCallRunner', () => {
     expect(dependencies.endCall).toHaveBeenCalledTimes(1);
   });
 
+  it('answers identity questions with ids from the challenge it started, then uses the first name', async () => {
+    const { runner, dependencies, listSpokenLines } = buildHarness([
+      { type: 'tool', tool_name: 'start_identity_check', args: { level: 1 } },
+      { type: 'customer', text: '14th of September 1992.' },
+      {
+        type: 'tool',
+        tool_name: 'submit_identity_answers',
+        args: {
+          challenge_id: '{{start_identity_check.challenge_id}}',
+          answers: [
+            {
+              question_id: '{{start_identity_check.questions.1.question_id}}',
+              answer: '14th of September 1992',
+            },
+          ],
+        },
+      },
+      {
+        type: 'ai',
+        text: 'Thanks, {{submit_identity_answers.first_name|there}}.',
+      },
+    ]);
+    dependencies.dispatchTool.mockImplementation(async (_call_id, tool_name) =>
+      tool_name === 'start_identity_check'
+        ? {
+            ok: true,
+            result: {
+              challenge_id: 'IDC-000042',
+              questions: [
+                { question_id: 'Q1', kind: 'FULL_NAME' },
+                { question_id: 'Q2', kind: 'DATE_OF_BIRTH' },
+              ],
+            },
+          }
+        : {
+            ok: true,
+            result: { is_passed: true, identity_level: 1, first_name: 'Sarah' },
+          },
+    );
+
+    const run_promise = runner.run();
+    await jest.advanceTimersByTimeAsync(30_000);
+    await run_promise;
+
+    expect(dependencies.dispatchTool.mock.calls[1]).toEqual([
+      CALL_ID,
+      'submit_identity_answers',
+      {
+        challenge_id: 'IDC-000042',
+        answers: [{ question_id: 'Q2', answer: '14th of September 1992' }],
+      },
+    ]);
+    expect(listSpokenLines()).toEqual([
+      'CUSTOMER: 14th of September 1992.',
+      'AI: Thanks, Sarah.',
+    ]);
+  });
+
   describe('await_instruction', () => {
     const steps: ScriptStep[] = [
       { type: 'customer', text: 'It has been a rough month.' },
@@ -382,7 +440,7 @@ describe('SimulatedCallRunner', () => {
       });
     });
 
-    it('approves the identity push about two seconds after it was sent, faster at 2x', async () => {
+    it('approves the optional app check about two seconds after it was sent, faster at 2x', async () => {
       const { runner, dependencies } = buildHarness(
         [{ type: 'pause', seconds: 30 }],
         2,

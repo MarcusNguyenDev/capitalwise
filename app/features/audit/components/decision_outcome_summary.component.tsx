@@ -16,7 +16,10 @@ function describeHumanDecision(explanation: DecisionExplanation): { headline: st
     };
   }
   if (explanation.case.status === "AUTO_EXECUTED") {
-    return { headline: "No person needed", detail: "Policy let this low-risk, reversible action run automatically." };
+    return { headline: "No person needed", detail: "Policy let this run automatically on the call." };
+  }
+  if (explanation.case.status === "AUTO_DECLINED") {
+    return { headline: "No person needed", detail: "Policy declined this on the call. Nothing was carried out; the customer was offered a specialist review." };
   }
   return { headline: "Waiting for a decision", detail: "Nothing has been carried out yet." };
 }

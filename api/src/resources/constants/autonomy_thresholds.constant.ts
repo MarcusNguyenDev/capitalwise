@@ -7,4 +7,7 @@ export const PENDING_SIGN_OFF_STATUS = 'PENDING_SIGN_OFF';
 export const AUTONOMY_SUBJECTS: Record<string, string | undefined> = {
   REFUND_FEE: 'Fee refunds under $30, first request',
   HARDSHIP_REQUEST: 'Hardship requests with verified income loss',
+  PAYMENT_ARRANGEMENT: 'Longer payment arrangements',
+  RAISE_DISPUTE: 'Disputes over $2,000',
+  SERVICE_REQUEST: 'Staff-completed service requests',
 };

@@ -14,6 +14,11 @@ export interface CustomerOverview {
   has_care_flag: boolean;
   accounts: CustomerAccountSummary[];
   cards: Record<string, unknown>[];
+  preferences: {
+    paper_statements: boolean;
+    sms_alerts: boolean;
+    large_print_letters: boolean;
+  };
 }
 
 export interface CustomerAccountSummary {
@@ -61,6 +66,7 @@ export interface TransactionRecord {
   amount: number;
   description: string;
   created_at: Date;
+  account_nickname: string;
 }
 
 export interface FeeHistoryEntry {

@@ -3,7 +3,9 @@
 import { CircleCheck } from "lucide-react";
 import Link from "next/link";
 
-import { formatCodeLabel, formatDuration, secondsBetween } from "@/shared/format/format_values.util";
+import { formatDuration, secondsBetween } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
+import { UNIDENTIFIED_CALLER_NAME } from "@/shared/status/status_wording.constant";
 import { TierBadge } from "@/shared/status/tier_badge.component";
 import type { Escalation } from "@/shared/types/resources.type";
 import { Badge } from "@/shared/ui/badge.component";
@@ -27,14 +29,14 @@ function EscalationSummary({ escalation, current_time_ms }: { escalation: Escala
   return (
     <>
       <span className="flex items-baseline justify-between gap-3">
-        <span className="truncate font-semibold">{escalation.customer_name ?? "Unknown caller"}</span>
+        <span className="truncate font-semibold">{escalation.customer_name ?? UNIDENTIFIED_CALLER_NAME}</span>
         <span className="shrink-0 text-sm font-medium tabular-nums text-warning">waiting {formatDuration(waiting_seconds)}</span>
       </span>
       <span className="block truncate text-sm text-ink-soft">{escalation.reason ?? "Waiting for a specialist"}</span>
       <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
         {escalation.tier ? <TierBadge tier={escalation.tier} has_tooltip={false} /> : <Badge tone="attention">Needs attention</Badge>}
         {escalation.risk_level === "HIGH" ? <Badge tone="danger">High risk</Badge> : null}
-        {escalation.action_code ? <Badge>{formatCodeLabel(escalation.action_code)}</Badge> : null}
+        {escalation.action_code ? <Badge>{formatActionLabel(escalation.action_code)}</Badge> : null}
       </span>
       <span className="mt-1 block text-xs text-ink-faint">
         {escalation.assigned_staff_name ? `Routed to ${escalation.assigned_staff_name}` : "Not assigned yet"}

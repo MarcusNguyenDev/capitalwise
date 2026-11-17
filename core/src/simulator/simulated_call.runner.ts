@@ -1,6 +1,9 @@
 import { Logger } from '@nestjs/common';
 
-import { resolveScriptPlaceholders } from '../call_scripts/resolve_script_placeholders.util';
+import {
+  resolveScriptArguments,
+  resolveScriptPlaceholders,
+} from '../call_scripts/resolve_script_placeholders.util';
 import {
   AwaitInstructionStep,
   AwaitTakeoverStep,
@@ -186,7 +189,10 @@ export class SimulatedCallRunner {
     const tool_outcome = await this.dependencies.dispatchTool(
       call_id,
       tool_name,
-      tool_args,
+      resolveScriptArguments(tool_args, {
+        bank_name: this.dependencies.bank_name,
+        tool_results: this.tool_results,
+      }),
     );
     if (tool_outcome.ok) {
       this.tool_results[tool_name] = tool_outcome.result;

@@ -4,11 +4,14 @@ import { CallsService } from '../../calls/calls.service';
 import { CallRiskLevel, CallRow } from '../../calls/types/call_row.type';
 import { EngineApiClient } from '../../engine_api/engine_api.client';
 import { ProposalResult } from '../../engine_api/types/proposal_result.type';
+import { findProposableAction } from '../constants/proposable_action_codes.constant';
 import { FlagConcernArgsDto } from '../dto/flag_concern_args.dto';
 import { LockCardArgsDto } from '../dto/lock_card_args.dto';
 import { ProposeActionArgsDto } from '../dto/propose_action_args.dto';
 import { RequestHumanArgsDto } from '../dto/request_human_args.dto';
+import { ToolRejectedError } from '../errors/tool_rejected.error';
 import { ToolContext } from '../types/tool_context.type';
+import { validateToolArgs } from '../validate_tool_args.util';
 
 const ESCALATION_TIER = 3;
 const FALLBACK_SPECIALIST_NAME = 'a specialist';
@@ -58,10 +61,14 @@ export class ActionToolsHandler {
     tool_context: ToolContext,
     tool_args: ProposeActionArgsDto,
   ): Promise<Record<string, unknown>> {
+    const action_params = await this.validateActionParams(
+      tool_args.action_code,
+      tool_args.params,
+    );
     const proposal_result = await this.engine_api_client.proposeAction({
       call_id: tool_context.call.call_id,
       action_code: tool_args.action_code,
-      params: tool_args.params,
+      params: action_params,
       summary: tool_args.summary,
       customer_statement: tool_args.customer_statement,
       soft_signals: tool_args.soft_signals
@@ -70,6 +77,48 @@ export class ActionToolsHandler {
     });
     await this.raiseAttentionIfEscalated(tool_context.call, proposal_result);
     return { ...proposal_result };
+  }
+
+  // Each action has its own params; unknown ones are dropped, wrong ones are
+  // answered with INVALID_ARGUMENTS before the api is called.
+  private async validateActionParams(
+    action_code: string,
+    raw_params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const proposable_action = findProposableAction(action_code);
+    if (!proposable_action) {
+      throw new ToolRejectedError(
+        'INVALID_ARGUMENTS',
+        `${action_code} is not an action you can propose.`,
+      );
+    }
+    const params_validation = await validateToolArgs(
+      proposable_action.params_dto,
+      raw_params,
+    );
+    if (!params_validation.is_valid) {
+      throw new ToolRejectedError(
+        'INVALID_ARGUMENTS',
+        `The params for ${action_code} are not valid: ${params_validation.validation_messages.join('; ')}. Expected ${proposable_action.params_signature}.`,
+      );
+    }
+    const action_params = { ...params_validation.tool_args } as Record<
+      string,
+      unknown
+    >;
+    const required_any_of = proposable_action.required_any_of ?? [];
+    const has_required_param =
+      required_any_of.length === 0 ||
+      required_any_of.some(
+        (param_name) => action_params[param_name] !== undefined,
+      );
+    if (!has_required_param) {
+      throw new ToolRejectedError(
+        'INVALID_ARGUMENTS',
+        `The params for ${action_code} need at least one of ${required_any_of.join(', ')}.`,
+      );
+    }
+    return action_params;
   }
 
   async requestHuman(

@@ -33,6 +33,7 @@ export function PolicyRuleSentence({ rule, is_default = false }: { rule: PolicyR
           )}
           {is_fallback ? null : <Keyword word="then" />}
           <span className="font-semibold">{describeRuleOutcome(rule)}</span>
+          {rule.skill ? <span className="text-ink-soft"> · to the {formatCodeLabel(rule.skill).toLowerCase()} team</span> : null}
         </p>
         <p className="text-ink-soft">
           {rule.reason.replace(/\.$/, "")}.{rule.proposal ? ` Proposes: ${describeProposal(rule.proposal)}.` : ""}

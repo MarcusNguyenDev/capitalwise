@@ -11,7 +11,9 @@ import { OllamaProvider } from './ollama.provider';
 
 function buildProvider(base_url = 'http://ollama.test:11434/v1') {
   return new OllamaProvider({
-    providers: { ollama: { base_url, api_key: 'secret-token' } },
+    providers: {
+      ollama: { base_url, api_key: 'secret-token', context_tokens: 16_384 },
+    },
   } as never);
 }
 
@@ -91,7 +93,7 @@ describe('OllamaProvider', () => {
       model: 'gpt-6:luna',
       stream: true,
       think: false,
-      options: { temperature: 0.4, num_predict: 300 },
+      options: { temperature: 0.4, num_predict: 300, num_ctx: 16_384 },
     });
     expect(request_body.tools[0].function.name).toBe('lock_card');
     expect(request_body.messages[2]).toEqual({

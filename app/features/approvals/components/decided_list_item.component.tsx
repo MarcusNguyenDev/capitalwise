@@ -1,6 +1,7 @@
 import { CircleCheck, CircleX } from "lucide-react";
 
 import { formatCodeLabel } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import { QueueItem } from "@/shared/ui/queue_item.component";
 
 import { DECISION_LABELS } from "../constants/approval_queue.constant";
@@ -27,7 +28,7 @@ export function DecidedListItem({ outcome, is_selected, onOpen }: DecidedListIte
         </span>
       </span>
       <span className="block truncate pl-6 text-sm text-ink-faint">
-        {formatCodeLabel(decided_case.action_code)}
+        {formatActionLabel(decided_case.action_code)}
         {decided_case.decided_by_name ? ` · by ${decided_case.decided_by_name}` : ""}
       </span>
     </QueueItem>

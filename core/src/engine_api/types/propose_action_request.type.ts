@@ -1,6 +1,7 @@
 export interface SoftSignals {
   vulnerability_signals?: string[];
   scam_coaching_signals?: string[];
+  fraud_signals?: string[];
   quotes?: string[];
 }
 

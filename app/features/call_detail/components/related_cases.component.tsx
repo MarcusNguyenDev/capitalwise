@@ -1,9 +1,10 @@
 import { ArrowRight, FileText } from "lucide-react";
 import Link from "next/link";
 
-import { formatCalendarDate, formatCodeLabel } from "@/shared/format/format_values.util";
+import { formatCalendarDate } from "@/shared/format/format_values.util";
 import { formatConfidence } from "@/shared/policy/describe_policy.util";
 import { CaseStatusBadge } from "@/shared/status/case_status_badge.component";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import { RECOMMENDATION_LABELS } from "@/shared/status/status_wording.constant";
 import { TierBadge } from "@/shared/status/tier_badge.component";
 import type { EngineCase } from "@/shared/types/case.type";
@@ -22,7 +23,7 @@ function RelatedCaseCard({ engine_case }: { engine_case: EngineCase }) {
   return (
     <li className="animate-slide-in rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-semibold">{formatCodeLabel(engine_case.action_code)}</span>
+        <span className="font-semibold">{formatActionLabel(engine_case.action_code)}</span>
         <TierBadge tier={engine_case.tier} />
         <CaseStatusBadge status={engine_case.status} />
       </div>

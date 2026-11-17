@@ -57,3 +57,28 @@ export function resolveScriptPlaceholders(
     .replace(/ ([.,!?])/g, '$1')
     .trim();
 }
+
+// Resolves placeholders in every string of a tool's arguments, however deeply
+// nested (e.g. the challenge_id and question ids of submit_identity_answers).
+export function resolveScriptArguments<Value>(
+  value: Value,
+  placeholder_values: ScriptPlaceholderValues,
+): Value {
+  if (typeof value === 'string') {
+    return resolveScriptPlaceholders(value, placeholder_values) as Value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      resolveScriptArguments(item, placeholder_values),
+    ) as Value;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested_value]) => [
+        key,
+        resolveScriptArguments(nested_value, placeholder_values),
+      ]),
+    ) as Value;
+  }
+  return value;
+}

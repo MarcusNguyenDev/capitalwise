@@ -5,39 +5,60 @@ import { FeeAlreadyRefundedError } from '../core_banking/errors/fee_already_refu
 import { HeldPaymentNotFoundError } from '../core_banking/errors/held_payment_not_found.error';
 import { CustomerOverview } from '../core_banking/types/bank_records.type';
 import { PolicyFacts } from '../policies/types/policy_definition.type';
+import { CardFactsBuilder } from './builders/card_facts.builder';
+import { DisputeFactsBuilder } from './builders/dispute_facts.builder';
+import { ServicingFactsBuilder } from './builders/servicing_facts.builder';
 import {
   ACTION_CODES,
   ACTION_SOFT_SIGNAL_FACTS,
   ARRANGEMENT_TYPES,
+  CARD_ACTION_CODES,
   MAX_ARRANGEMENT_MONTHS,
   UNKNOWN_CUSTOMER_ID,
 } from './constants/action_code.constant';
 import { AmountMismatchError } from './errors/amount_mismatch.error';
-import { CardNotOwnedError } from './errors/card_not_owned.error';
 import { FeeNotOwnedError } from './errors/fee_not_owned.error';
 import { HeldPaymentNotOwnedError } from './errors/held_payment_not_owned.error';
 import { LoanSelectionRequiredError } from './errors/loan_selection_required.error';
-import { MissingActionParamError } from './errors/missing_action_param.error';
 import { NotAFeeError } from './errors/not_a_fee.error';
 import { BuiltFacts, FactRequest } from './types/fact_request.type';
 import { SoftSignals } from './types/soft_signals.type';
+import {
+  readStringParam,
+  requireStringParam,
+} from './utils/action_params.util';
 
 const AMOUNT_TOLERANCE = 0.005;
 const FEE_TXN_TYPE = 'FEE';
 const HELD_STATUS = 'HELD';
+const IDENTITY_VERIFIED_LEVEL = 1;
+const SERVICING_ACTION_CODES: string[] = [
+  ACTION_CODES.REQUEST_STATEMENT,
+  ACTION_CODES.UPDATE_PREFERENCES,
+  ACTION_CODES.PAYMENT_ARRANGEMENT,
+  ACTION_CODES.SERVICE_REQUEST,
+];
 
 // Computes every fact a policy references, deterministically, from the bank's
 // records. The model's params only say WHAT the request is about; they are
 // checked against the database and never trusted as facts.
 @Injectable()
 export class FactBuilderService {
-  constructor(private readonly core_banking_adapter: CoreBankingAdapter) {}
+  constructor(
+    private readonly core_banking_adapter: CoreBankingAdapter,
+    private readonly card_facts_builder: CardFactsBuilder,
+    private readonly dispute_facts_builder: DisputeFactsBuilder,
+    private readonly servicing_facts_builder: ServicingFactsBuilder,
+  ) {}
 
+  // Every policy gets identity_level (from engine.identity_attempts) and
+  // identity_verified (level 1 or more) as well as the action's own facts.
   async buildFacts(fact_request: FactRequest): Promise<BuiltFacts> {
     const overview = await this.findOverview(fact_request.customer_id);
     const action_facts = await this.buildActionFacts(fact_request, overview);
     const common_facts: PolicyFacts = {
-      identity_verified: fact_request.call.identity_verified,
+      identity_level: fact_request.identity_level,
+      identity_verified: fact_request.identity_level >= IDENTITY_VERIFIED_LEVEL,
       has_care_flag: overview?.has_care_flag ?? false,
     };
     return {
@@ -72,9 +93,15 @@ export class FactBuilderService {
     fact_request: FactRequest,
     overview: CustomerOverview | null,
   ): Promise<BuiltFacts> {
+    if (CARD_ACTION_CODES.includes(fact_request.action_code)) {
+      return this.card_facts_builder.buildCardFacts(fact_request);
+    }
+    if (SERVICING_ACTION_CODES.includes(fact_request.action_code)) {
+      return this.servicing_facts_builder.buildServicingFacts(fact_request);
+    }
     switch (fact_request.action_code) {
-      case ACTION_CODES.LOCK_CARD:
-        return this.buildLockCardFacts(fact_request);
+      case ACTION_CODES.RAISE_DISPUTE:
+        return this.dispute_facts_builder.buildDisputeFacts(fact_request);
       case ACTION_CODES.REFUND_FEE:
         return this.buildRefundFeeFacts(fact_request, overview);
       case ACTION_CODES.HARDSHIP_REQUEST:
@@ -86,31 +113,15 @@ export class FactBuilderService {
     }
   }
 
-  private async buildLockCardFacts(
-    fact_request: FactRequest,
-  ): Promise<BuiltFacts> {
-    const card_id = this.requireStringParam(fact_request, 'card_id');
-    const card = await this.core_banking_adapter.getCard(card_id);
-    const is_callers_card = card.customer_id === fact_request.customer_id;
-    // A card id the model got wrong must not become an escalation case.
-    if (!is_callers_card) {
-      throw new CardNotOwnedError(card_id);
-    }
-    return {
-      facts: {
-        card_belongs_to_caller: is_callers_card,
-        card_last4: is_callers_card ? card.last4 : null,
-        card_status: is_callers_card ? card.status : null,
-      },
-      resolved_params: { card_id },
-    };
-  }
-
   private async buildRefundFeeFacts(
     fact_request: FactRequest,
     overview: CustomerOverview | null,
   ): Promise<BuiltFacts> {
-    const fee_txn_id = this.requireStringParam(fact_request, 'fee_txn_id');
+    const fee_txn_id = requireStringParam(
+      fact_request.action_code,
+      fact_request.params,
+      'fee_txn_id',
+    );
     const fee_transaction =
       await this.core_banking_adapter.getTransaction(fee_txn_id);
     if (fee_transaction.txn_type !== FEE_TXN_TYPE) {
@@ -225,8 +236,8 @@ export class FactBuilderService {
   }
 
   private buildHumanCallbackFacts(fact_request: FactRequest): BuiltFacts {
-    const reason = this.readStringParam(fact_request.params, 'reason');
-    const required_skill = this.readStringParam(
+    const reason = readStringParam(fact_request.params, 'reason');
+    const required_skill = readStringParam(
       fact_request.params,
       'required_skill',
     );
@@ -242,7 +253,7 @@ export class FactBuilderService {
   private async resolveLoanAccountId(
     fact_request: FactRequest,
   ): Promise<string> {
-    const requested_account_id = this.readStringParam(
+    const requested_account_id = readStringParam(
       fact_request.params,
       'account_id',
     );
@@ -265,10 +276,7 @@ export class FactBuilderService {
   private async resolveHeldPaymentId(
     fact_request: FactRequest,
   ): Promise<string> {
-    const requested_txn_id = this.readStringParam(
-      fact_request.params,
-      'txn_id',
-    );
+    const requested_txn_id = readStringParam(fact_request.params, 'txn_id');
     if (requested_txn_id) {
       return requested_txn_id;
     }
@@ -321,26 +329,5 @@ export class FactBuilderService {
     if (!is_matching) {
       throw new AmountMismatchError(fee_txn_id, fee_amount);
     }
-  }
-
-  private readStringParam(
-    params: Record<string, unknown>,
-    param_name: string,
-  ): string | null {
-    const param_value = params[param_name];
-    return typeof param_value === 'string' && param_value.trim() !== ''
-      ? param_value.trim()
-      : null;
-  }
-
-  private requireStringParam(
-    fact_request: FactRequest,
-    param_name: string,
-  ): string {
-    const param_value = this.readStringParam(fact_request.params, param_name);
-    if (!param_value) {
-      throw new MissingActionParamError(fact_request.action_code, param_name);
-    }
-    return param_value;
   }
 }

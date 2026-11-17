@@ -13,7 +13,11 @@ import {
   EXECUTED_STATUSES,
 } from './constants/case_status.constant';
 import { CaseNotFoundError } from './errors/case_not_found.error';
-import { buildCustomerMessage } from './proposal_messages';
+import {
+  buildCustomerMessage,
+  resolveProposalOutcome,
+} from './proposal_messages';
+import { redactLevelOneResult } from './redact_level_one_result.util';
 import { CaseRecord } from './types/case_record.type';
 import { ProposalResult } from './types/proposal_result.type';
 
@@ -39,9 +43,14 @@ export class ProposalResultFactory {
         )
       : null;
     const is_executed = EXECUTED_STATUSES.includes(case_record.status);
-    const execution_result = is_executed
-      ? await this.cases_repository.selectExecutionResult(case_number)
-      : null;
+    // Redacted by the identity level the case was decided at.
+    const execution_result = redactLevelOneResult(
+      case_record.action_code,
+      is_executed
+        ? await this.cases_repository.selectExecutionResult(case_number)
+        : null,
+      case_record.facts.identity_level,
+    );
     const expected_wait_minutes = this.estimateWait(
       case_record,
       assigned_staff,
@@ -78,14 +87,16 @@ export class ProposalResultFactory {
       response_due_on: case_record.response_due_on,
       is_executed,
       execution_result,
+      outcome: resolveProposalOutcome(case_record.status),
       customer_message: buildCustomerMessage({
         case_number,
         action_code: case_record.action_code,
-        tier: case_record.tier,
-        is_executed,
+        status: case_record.status,
+        matched_rule_id: case_record.matched_rule_id,
         staff_name: assigned_staff?.name ?? null,
         expected_timing,
-        card_last4: this.readCardLast4(case_record, execution_result),
+        facts: case_record.facts,
+        execution_result,
       }),
     };
   }
@@ -107,14 +118,5 @@ export class ProposalResultFactory {
       ...assigned_staff,
       current_load: Math.max(assigned_staff.current_load - own_weight, 0),
     });
-  }
-
-  private readCardLast4(
-    case_record: CaseRecord,
-    execution_result: Record<string, unknown> | null,
-  ): string | null {
-    const card_last4 =
-      execution_result?.card_last4 ?? case_record.facts.card_last4;
-    return typeof card_last4 === 'string' ? card_last4 : null;
   }
 }

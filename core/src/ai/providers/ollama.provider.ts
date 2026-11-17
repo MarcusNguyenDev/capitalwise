@@ -59,6 +59,7 @@ export class OllamaProvider extends AiProvider {
   readonly capabilities = [AiCapability.CHAT];
   readonly configuration_hint = 'OLLAMA_BASE_URL';
   private readonly connection: ProviderConnection;
+  private readonly context_tokens: number | undefined;
 
   constructor(@Inject(aiConfig.KEY) ai_config: ConfigType<typeof aiConfig>) {
     super();
@@ -66,6 +67,7 @@ export class OllamaProvider extends AiProvider {
       base_url: normaliseNativeBaseUrl(ai_config.providers.ollama.base_url),
       api_key: ai_config.providers.ollama.api_key,
     };
+    this.context_tokens = ai_config.providers.ollama.context_tokens;
   }
 
   isConfigured(): boolean {
@@ -150,6 +152,7 @@ export class OllamaProvider extends AiProvider {
       options: {
         temperature: chat_request.temperature,
         num_predict: chat_request.max_output_tokens,
+        num_ctx: this.context_tokens,
       },
     };
   }

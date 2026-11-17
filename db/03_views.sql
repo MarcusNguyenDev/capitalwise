@@ -56,7 +56,18 @@ SELECT
            ) ORDER BY card.card_id)
     FROM bank.cards AS card
     WHERE card.customer_id = customer.customer_id
-  ), '[]'::jsonb) AS cards
+  ), '[]'::jsonb) AS cards,
+  -- Deliberately no date of birth, street address or postcode: they are
+  -- identity answers, and this view is read by the AI's lookup tools.
+  COALESCE((
+    SELECT jsonb_build_object(
+             'paper_statements', preference.paper_statements,
+             'sms_alerts', preference.sms_alerts,
+             'large_print_letters', preference.large_print_letters
+           )
+    FROM bank.customer_preferences AS preference
+    WHERE preference.customer_id = customer.customer_id
+  ), '{"paper_statements": false, "sms_alerts": true, "large_print_letters": false}'::jsonb) AS preferences
 FROM bank.customers AS customer;
 
 CREATE VIEW bank.v_statement AS
@@ -162,6 +173,10 @@ SELECT
   call.assigned_staff_id,
   staff.name AS assigned_staff_name,
   call.identity_verified,
+  call.identity_level,
+  call.identity_method,
+  call.is_identity_locked,
+  identity.failed_attempts AS identity_failed_attempts,
   call.verified_at,
   call.intent,
   call.sentiment,
@@ -184,6 +199,11 @@ LEFT JOIN LATERAL (
   ORDER BY turn.seq DESC
   LIMIT 1
 ) AS last_turn ON true
+CROSS JOIN LATERAL (
+  SELECT COUNT(*)::int AS failed_attempts
+  FROM engine.identity_attempts AS attempt
+  WHERE attempt.call_id = call.call_id AND NOT attempt.is_passed
+) AS identity
 WHERE call.status <> 'ENDED';
 
 CREATE VIEW engine.v_approval_inbox AS

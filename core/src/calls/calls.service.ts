@@ -176,6 +176,16 @@ export class CallsService {
     return this.calls_repository.updateCall(transaction, call_id, call_changes);
   }
 
+  findCaseAssignedStaffIdInTransaction(
+    transaction: TransactionClient,
+    case_number: string,
+  ): Promise<string | null> {
+    return this.calls_repository.findCaseAssignedStaffId(
+      transaction,
+      case_number,
+    );
+  }
+
   async recordMetrics(
     call_id: string,
     record_metrics: RecordMetricsDto,

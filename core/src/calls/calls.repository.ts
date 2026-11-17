@@ -14,7 +14,7 @@ const LIVE_CALL_SELECT = `
     call.call_id, call.caller_number, call.customer_id, call.customer_name, call.channel, call.status,
     call.handled_by_agent_id, agent.display_name AS agent_name,
     call.assigned_staff_id, staff.name AS assigned_staff_name,
-    call.identity_verified, call.verified_at, call.intent, call.sentiment, call.risk_level,
+    call.identity_verified, call.identity_level, call.identity_method, call.is_identity_locked, call.verified_at, call.intent, call.sentiment, call.risk_level,
     call.attention_reason, call.started_at, call.ended_at, call.ai_summary, call.metrics,
     last_turn.text AS last_line, last_turn.speaker AS last_speaker,
     EXTRACT(EPOCH FROM (COALESCE(call.ended_at, now()) - call.started_at))::int AS duration_seconds
@@ -152,5 +152,17 @@ export class CallsRepository {
        FROM engine.cases WHERE call_id = $1 ORDER BY created_at, case_number`,
       [call_id],
     );
+  }
+
+  // The specialist the api routed a case to (engine.cases is read-only here).
+  async findCaseAssignedStaffId(
+    transaction: TransactionClient,
+    case_number: string,
+  ): Promise<string | null> {
+    const rows = await transaction.query<{ assigned_staff_id: string | null }>(
+      `SELECT assigned_staff_id FROM engine.cases WHERE case_number = $1`,
+      [case_number],
+    );
+    return rows[0]?.assigned_staff_id ?? null;
   }
 }

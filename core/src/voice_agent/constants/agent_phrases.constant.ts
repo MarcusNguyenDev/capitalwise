@@ -1,7 +1,10 @@
 // Fixed lines the voice agent says itself (not the model). Pre-rendered at
 // startup with the hold lines.
+
+// The opening asks who is calling: the caller's answer is the first thing the
+// model hears, and no name is used until identity is confirmed.
 export function buildGreeting(bank_name: string): string {
-  return `Hello, you've reached ${bank_name}'s AI specialist. This call is recorded.`;
+  return `Hello, thanks for calling ${bank_name}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?`;
 }
 
 export const AGENT_PHRASES = {

@@ -1,4 +1,5 @@
-import { formatCodeLabel, formatLongDuration } from "@/shared/format/format_values.util";
+import { formatLongDuration } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import type { AutonomyStat } from "@/shared/types/resources.type";
 import { Badge } from "@/shared/ui/badge.component";
 import { DataTable } from "@/shared/ui/data_table.component";
@@ -31,7 +32,7 @@ export function AutonomyStatsTable({ autonomy_stats }: { autonomy_stats: Autonom
           header: "Action",
           renderCell: (autonomy_stat) => (
             <span className="flex flex-wrap items-center gap-2 font-medium">
-              {formatCodeLabel(autonomy_stat.action_code)}
+              {formatActionLabel(autonomy_stat.action_code)}
               {autonomy_stat.is_eligible ? <Badge tone="positive">Eligible</Badge> : null}
             </span>
           ),

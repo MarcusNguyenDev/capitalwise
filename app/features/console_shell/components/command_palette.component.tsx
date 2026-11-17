@@ -8,7 +8,8 @@ import type { ReactNode } from "react";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { formatCodeLabel } from "@/shared/format/format_values.util";
 import { useCurrentStaff } from "@/shared/staff/current_staff.provider";
-import { CALL_STATUS_LABELS, CASE_STATUS_LABELS } from "@/shared/status/status_wording.constant";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
+import { CALL_STATUS_LABELS, CASE_STATUS_LABELS, UNIDENTIFIED_CALLER_NAME } from "@/shared/status/status_wording.constant";
 
 import { CUSTOMER_PHONE_PATH, NAVIGATION_SECTIONS } from "../constants/navigation.constant";
 import { useCommandPaletteData } from "../hooks/use_command_palette_data.hook";
@@ -65,7 +66,7 @@ function PaletteResults({ onClose, onOpenShortcuts, onResetDemo }: { onClose: ()
               detail={CALL_STATUS_LABELS[call.status]}
               onSelect={() => goTo(`/?call=${call.call_id}`)}
             >
-              {call.customer_name ?? "Unknown caller"} <span className="text-ink-faint">· {call.intent ?? "Intent not known yet"}</span>
+              {call.customer_name ?? UNIDENTIFIED_CALLER_NAME} <span className="text-ink-faint">· {call.intent ?? "Intent not known yet"}</span>
             </PaletteItem>
           ))}
         </Command.Group>
@@ -76,12 +77,12 @@ function PaletteResults({ onClose, onOpenShortcuts, onResetDemo }: { onClose: ()
             <PaletteItem
               key={pending_case.case_number}
               value={`pending ${pending_case.case_number}`}
-              keywords={[pending_case.customer_name, formatCodeLabel(pending_case.action_code), pending_case.case_number]}
+              keywords={[pending_case.customer_name, formatActionLabel(pending_case.action_code), pending_case.case_number]}
               icon={<ClipboardCheck />}
               detail={pending_case.case_number}
               onSelect={() => goTo(`/approvals?case=${pending_case.case_number}`)}
             >
-              {pending_case.customer_name} <span className="text-ink-faint">· {formatCodeLabel(pending_case.action_code)}</span>
+              {pending_case.customer_name} <span className="text-ink-faint">· {formatActionLabel(pending_case.action_code)}</span>
             </PaletteItem>
           ))}
         </Command.Group>
@@ -109,12 +110,12 @@ function PaletteResults({ onClose, onOpenShortcuts, onResetDemo }: { onClose: ()
             <PaletteItem
               key={decided_case.case_number}
               value={`case ${decided_case.case_number}`}
-              keywords={[decided_case.customer_name, formatCodeLabel(decided_case.action_code), decided_case.case_number]}
+              keywords={[decided_case.customer_name, formatActionLabel(decided_case.action_code), decided_case.case_number]}
               icon={<FileSearch />}
               detail={CASE_STATUS_LABELS[decided_case.status]}
               onSelect={() => goTo(`/audit/decisions?case=${decided_case.case_number}`)}
             >
-              {decided_case.customer_name} <span className="text-ink-faint">· {formatCodeLabel(decided_case.action_code)}</span>
+              {decided_case.customer_name} <span className="text-ink-faint">· {formatActionLabel(decided_case.action_code)}</span>
             </PaletteItem>
           ))}
         </Command.Group>

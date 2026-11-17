@@ -24,7 +24,7 @@ import {
   TransactionRecord,
 } from './types/bank_records.type';
 
-// All SQL against schema `bank` lives in this file and nowhere else.
+// All SQL against schema `bank` lives in core_banking/ and nowhere else.
 @Injectable()
 export class CoreBankingRepository {
   constructor(private readonly database: DatabaseService) {}
@@ -102,9 +102,11 @@ export class CoreBankingRepository {
 
   async selectTransaction(txn_id: string): Promise<TransactionRecord | null> {
     const transaction_rows = await this.database.query<TransactionRecord>(
-      `SELECT txn_id, account_id, status, txn_type, amount, description, created_at
-       FROM bank.transactions
-       WHERE txn_id = $1`,
+      `SELECT txn.txn_id, txn.account_id, txn.status, txn.txn_type, txn.amount, txn.description, txn.created_at,
+              account.nickname AS account_nickname
+       FROM bank.transactions AS txn
+       JOIN bank.accounts AS account ON account.account_id = txn.account_id
+       WHERE txn.txn_id = $1`,
       [txn_id],
     );
     return transaction_rows[0] ?? null;

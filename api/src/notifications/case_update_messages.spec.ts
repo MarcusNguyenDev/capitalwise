@@ -32,7 +32,95 @@ describe('case update SMS wording', () => {
         }),
       ),
     ).toBe(
-      'Your card ending 4821 has been temporarily locked. You can unlock it any time in the app.',
+      'Your card ending 4821 has been temporarily locked. Call us any time to unlock it.',
+    );
+  });
+
+  it('never sends the customer to the app', () => {
+    for (const action_code of [
+      'LOCK_CARD',
+      'REPORT_LOST_STOLEN',
+      'UNLOCK_CARD',
+      'ACTIVATE_CARD',
+    ]) {
+      expect(
+        buildCaseCreatedSms(
+          buildContext({
+            action_code,
+            tier: 1,
+            execution_result: { card_last4: '4821' },
+          }),
+        ),
+      ).not.toMatch(/\bapp\b/i);
+    }
+  });
+
+  it('tells the customer where and when the replacement card arrives', () => {
+    expect(
+      buildCaseCreatedSms(
+        buildContext({
+          action_code: 'REPLACE_CARD',
+          tier: 1,
+          execution_result: {
+            delivery_suburb: 'Burleigh Heads',
+            expected_by: '2026-11-24',
+          },
+        }),
+      ),
+    ).toBe(
+      'Your replacement card is on its way to your address in Burleigh Heads and should arrive by Tuesday 24 November. Your old card is now blocked.',
+    );
+  });
+
+  it('explains a fee refund declined on the spot and offers a review', () => {
+    expect(
+      buildCaseCreatedSms(
+        buildContext({
+          tier: 1,
+          status: 'AUTO_DECLINED',
+          facts: { fee_amount: 20, refunds_last_12m: 2 },
+        }),
+      ),
+    ).toBe(
+      "We've looked at your request to refund the $20.00 fee (CASE-001101) and can't refund it this time. If you'd like a specialist to look at it again, just call us.",
+    );
+  });
+
+  it('confirms a dispute and its provisional credit', () => {
+    expect(
+      buildCaseCreatedSms(
+        buildContext({
+          action_code: 'RAISE_DISPUTE',
+          tier: 1,
+          execution_result: {
+            amount: 264,
+            merchant: 'Northshore Electronics',
+            provisional_credit_txn_id: 'TXN-100500',
+            provisional_credit_amount: 264,
+            expected_by: '2026-11-24',
+          },
+        }),
+      ),
+    ).toBe(
+      "We've lodged your dispute for $264.00 at Northshore Electronics (CASE-001101) and credited $264.00 while we investigate. We'll tell you the outcome by Tuesday 24 November.",
+    );
+  });
+
+  it('confirms a payment arrangement with its end date', () => {
+    expect(
+      buildCaseCreatedSms(
+        buildContext({
+          action_code: 'PAYMENT_ARRANGEMENT',
+          tier: 1,
+          execution_result: {
+            weeks: 4,
+            account_nickname: 'Home loan',
+            end_on: '2026-12-15',
+          },
+        }),
+      ),
+    ).toBe(
+      'Your 4-week payment arrangement on your home loan is in place until Tuesday 15 December. Late fees are paused.',
     );
   });
 

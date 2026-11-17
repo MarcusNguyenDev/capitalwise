@@ -285,7 +285,9 @@ export class CoreBankingAdapter {
     return {
       refund_txn_id,
       fee_txn_id: fee_transaction.txn_id,
+      fee_description: fee_transaction.description,
       account_id: fee_transaction.account_id,
+      account_nickname: fee_transaction.account_nickname,
       amount: refund_request.amount,
     };
   }

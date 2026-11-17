@@ -197,6 +197,7 @@ export class VoiceAgentSessionManager
       call_id: call.call_id,
       settings: {
         bank_name: this.app_config.bank_name,
+        bank_time_zone: this.app_config.bank_time_zone,
         system_prompt: session_parts.system_prompt,
         tools: listChatToolDefinitions(),
         ai_voice: this.ai_config.synthesize.ai_voice,

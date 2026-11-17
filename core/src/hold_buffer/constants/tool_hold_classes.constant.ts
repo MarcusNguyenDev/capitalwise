@@ -13,7 +13,10 @@ export enum ToolHoldClass {
 const TOOL_HOLD_CLASSES: Record<string, ToolHoldClass> = {
   get_caller_context: ToolHoldClass.SILENT,
   update_call_insight: ToolHoldClass.SILENT,
-  send_identity_push: ToolHoldClass.APP_APPROVAL,
+  // Identity questions are part of the conversation, never a hold.
+  start_identity_check: ToolHoldClass.SILENT,
+  submit_identity_answers: ToolHoldClass.SILENT,
+  send_app_identity_check: ToolHoldClass.APP_APPROVAL,
 };
 
 // Every registered tool not listed above checks the system. A tool the model

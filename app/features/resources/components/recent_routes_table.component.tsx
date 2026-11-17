@@ -1,4 +1,5 @@
 import { formatCodeLabel, formatDateTime } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import { TierBadge } from "@/shared/status/tier_badge.component";
 import type { RecentRoute } from "@/shared/types/resources.type";
 import { DataTable } from "@/shared/ui/data_table.component";
@@ -30,7 +31,7 @@ export function RecentRoutesTable({ recent_routes }: { recent_routes: RecentRout
           header: "Action",
           renderCell: (recent_route) => (
             <span className="flex flex-wrap items-center gap-1.5">
-              {formatCodeLabel(recent_route.action_code)} <TierBadge tier={recent_route.tier} />
+              {formatActionLabel(recent_route.action_code)} <TierBadge tier={recent_route.tier} />
             </span>
           ),
         },

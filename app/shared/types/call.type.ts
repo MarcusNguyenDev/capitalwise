@@ -15,6 +15,11 @@ export interface CallUsage {
   tts_characters?: number;
 }
 
+/** 0 = not confirmed; 1 = name, date of birth and postcode; 2 = level 1 plus a question about recent activity. */
+export type IdentityLevel = 0 | 1 | 2;
+/** KNOWLEDGE: answered questions in conversation. APP_PUSH: the optional banking app check (level 1 only). */
+export type IdentityMethod = "KNOWLEDGE" | "APP_PUSH";
+
 export type CallHoldReason = "CHECKING_SYSTEM" | "WAITING_FOR_APP_APPROVAL";
 
 /** The latest hold state kept on the call, so a page loaded mid-hold can show it. */
@@ -55,7 +60,13 @@ export interface LiveCall {
   agent_name: string | null;
   assigned_staff_id: string | null;
   assigned_staff_name: string | null;
+  /** Kept for older readers: true once identity_level >= 1. */
   identity_verified: boolean;
+  identity_level: IdentityLevel;
+  identity_method: IdentityMethod | null;
+  is_identity_locked: boolean;
+  /** Answers that did not match on this call, from engine.identity_attempts. */
+  identity_failed_attempts?: number;
   verified_at: string | null;
   intent: string | null;
   sentiment: Sentiment;
@@ -68,6 +79,18 @@ export interface LiveCall {
   last_line: string | null;
   last_speaker: TurnSpeaker | null;
   duration_seconds: number;
+}
+
+/** `GET /api/identity/calls/:call_id`: the api's authoritative identity record for one call. */
+export interface CallIdentityRecord {
+  call_id: string;
+  identity_level: IdentityLevel;
+  method: IdentityMethod | null;
+  is_locked: boolean;
+  failed_attempts: number;
+  customer_id: string | null;
+  /** The fraud case raised when the checks locked. */
+  concern_case_number: string | null;
 }
 
 export interface CallTurn {

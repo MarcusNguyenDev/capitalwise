@@ -4,37 +4,32 @@
   "customer_id": "CUS-3002",
   "caller_number": "+61491574632",
   "steps": [
-    { "type": "ai", "text": "Hello, you've reached {{bank_name}}'s AI specialist. This call is recorded." },
+    { "type": "ai", "text": "Hello, thanks for calling {{bank_name}}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?" },
     { "type": "tool", "tool_name": "get_caller_context", "args": {} },
-    { "type": "ai", "text": "Hello Dorothy, how can I help you today?" },
-    { "type": "customer", "text": "Hello? Yes. There's some money gone from my account and I don't know what it is. Forty-two dollars fifty." },
-    { "type": "insight", "intent": "Unrecognised direct debit", "sentiment": "NEUTRAL", "summary": "Dorothy does not recognise a $42.50 payment from her account." },
-    { "type": "ai", "text": "I can help you with that, Dorothy. I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line." },
-    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
-    { "type": "ai", "text": "Thank you, Dorothy. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "customer", "text": "Hello? Yes. Dorothy Evans. There's some money gone from my account and I don't know what it is. Forty-two dollars fifty." },
+    { "type": "insight", "intent": "Unrecognised direct debit", "sentiment": "NEUTRAL", "summary": "Caller does not recognise a $42.50 payment from her account." },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "ai", "text": "I can help you with that, and there's no rush at all. First I'll ask you two small questions, one at a time. Could you tell me your date of birth?" },
+    { "type": "customer", "text": "My birthday? The 12th of May. 1942." },
+    { "type": "ai", "text": "Thank you. And the postcode where you live?" },
+    { "type": "customer", "text": "Oh, it's 4225. Coolangatta." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Dorothy Evans"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "12th of May 1942"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4225"}]} },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 2} },
+    { "type": "ai", "text": "Thank you, {{submit_identity_answers.first_name|Dorothy}}. So I can look at your payments, there's just one more quick question, and there's no rush. {{start_identity_check.questions.0.prompt|Roughly how much was your last pension or Centrelink payment?}}" },
+    { "type": "customer", "text": "My pension? About eleven hundred and forty dollars, dear." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "About eleven hundred and forty dollars"}]} },
+    { "type": "ai", "text": "Thank you, that's all I needed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_customer_overview", "args": {} },
-    { "type": "tool", "tool_name": "get_recent_transactions", "args": { "account_id": "ACC-30021", "hours": 96 } },
+    { "type": "tool", "tool_name": "get_recent_transactions", "args": {"account_id": "ACC-30021", "hours": 96} },
     { "type": "ai", "text": "Thanks for holding. I can see forty-two dollars fifty went to Seaside Seniors Club two days ago. It's a monthly membership payment." },
     { "type": "customer", "text": "Seaside... I don't remember that. Did I do that? I'm sorry, dear, I get so muddled. What did you say it was?" },
     { "type": "ai", "text": "That's quite alright, Dorothy. There's no rush at all." },
-    {
-      "type": "tool",
-      "tool_name": "flag_concern",
-      "args": {
-        "type": "VULNERABILITY",
-        "quotes": ["I don't remember that. Did I do that?", "I get so muddled. What did you say it was?"],
-        "signals": ["CONFUSION"]
-      }
-    },
+    { "type": "tool", "tool_name": "flag_concern", "args": {"type": "VULNERABILITY", "quotes": ["I don't remember that. Did I do that?", "I get so muddled. What did you say it was?"], "signals": ["CONFUSION"]} },
     { "type": "insight", "intent": "Unrecognised direct debit", "sentiment": "DISTRESSED", "summary": "Dorothy is confused about a $42.50 monthly direct debit to Seaside Seniors Club and cannot recall setting it up. Care flag on file: speak slowly and confirm understanding." },
-    { "type": "ai", "text": "It's a payment to Seaside Seniors Club, the same amount each month. I've asked {{flag_concern.specialist_name|one of our care specialists}} to go through it with you, and they'll join us in about {{flag_concern.expected_wait_minutes|2}} minutes." },
+    { "type": "ai", "text": "It's a payment to Seaside Seniors Club, the same amount each month. So someone can go through it with you properly, I've asked {{flag_concern.specialist_name|one of our care specialists}} to help, and they'll join us in about {{flag_concern.expected_wait_minutes|2}} minutes. They already know what we've talked about." },
     { "type": "customer", "text": "Oh, thank you. You're very kind." },
     { "type": "ai", "text": "Not at all, Dorothy. I'll stay on the line with you until they join." },
-    {
-      "type": "await_takeover",
-      "timeout_seconds": 90,
-      "ai_if_timeout": "Dorothy, {{flag_concern.specialist_name|our specialist}} will ring you back shortly on this number to go through it with you. There's nothing you need to do until then."
-    },
+    { "type": "await_takeover", "timeout_seconds": 90, "ai_if_timeout": "Dorothy, {{flag_concern.specialist_name|our specialist}} will ring you back shortly on this number to go through it with you. There's nothing you need to do until then." },
     { "type": "ai", "text": "Thank you for calling, Dorothy. Take care." }
   ]
 }

@@ -17,7 +17,7 @@ function describeMode(call_mode: CallMode | null, is_scripted_available: boolean
     return "You talk to the AI specialist through your microphone.";
   }
   if (call_mode === "SCRIPTED") {
-    return "Replays a voiced script through the same tools, policy and audit pipeline. You still approve the app push yourself.";
+    return "Replays a voiced script through the same tools, policy and audit pipeline. The caller answers the identity questions in the script, so there is nothing to tap.";
   }
   return is_scripted_available ? "" : "This caller has no scripted call, and live voice is off.";
 }

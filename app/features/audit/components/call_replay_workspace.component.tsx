@@ -8,6 +8,7 @@ import { useListNavigation } from "@/shared/keyboard/use_list_navigation.hook";
 import { LIVE_EVENT } from "@/shared/live/live_event_names.constant";
 import { useLiveQuery } from "@/shared/live/use_live_query.hook";
 import { useQueryParam } from "@/shared/navigation/use_query_param.hook";
+import { UNIDENTIFIED_CALLER_NAME } from "@/shared/status/status_wording.constant";
 import { EmptyState } from "@/shared/ui/empty_state.component";
 import { ErrorState } from "@/shared/ui/error_state.component";
 import { PageHeader } from "@/shared/ui/page_header.component";
@@ -68,7 +69,7 @@ export function CallReplayWorkspace() {
                   onOpen={() => setSelectedCallId(ended_call.call_id)}
                 >
                   <span className="flex items-baseline justify-between gap-3">
-                    <span className="truncate font-semibold">{ended_call.customer_name ?? "Unknown caller"}</span>
+                    <span className="truncate font-semibold">{ended_call.customer_name ?? UNIDENTIFIED_CALLER_NAME}</span>
                     <span className="shrink-0 text-sm tabular-nums text-ink-faint">{formatDuration(ended_call.duration_seconds)}</span>
                   </span>
                   <span className="block truncate text-sm text-ink-soft">{ended_call.intent ?? "No intent recorded"}</span>

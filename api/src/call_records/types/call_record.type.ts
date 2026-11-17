@@ -10,6 +10,11 @@ export interface CallRecord {
   handled_by_agent_id: string | null;
   assigned_staff_id: string | null;
   identity_verified: boolean;
+  // Written by core from the identity results; the api's own authority is
+  // engine.identity_attempts.
+  identity_level: number;
+  identity_method: string | null;
+  is_identity_locked: boolean;
   risk_level: string;
   started_at: Date;
   ended_at: Date | null;

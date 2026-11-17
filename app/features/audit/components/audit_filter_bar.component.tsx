@@ -1,11 +1,11 @@
 import { Search, X } from "lucide-react";
 
-import { formatCodeLabel } from "@/shared/format/format_values.util";
 import type { AuditEventFilter } from "@/shared/types/case.type";
 import type { Workforce } from "@/shared/types/resources.type";
 import { Button } from "@/shared/ui/button.component";
 
 import { ACTOR_TYPE_LABELS, ACTOR_TYPES, CALL_ID_PREVIEW_LENGTH } from "../constants/audit_view.constant";
+import { describeAuditEventType } from "../utils/describe_audit_event.util";
 
 const SELECT_CLASS_NAME = "h-9 rounded-md border border-line-strong bg-white px-2.5 text-sm";
 
@@ -71,7 +71,7 @@ export function AuditFilterBar({ event_filter, event_types, workforce, has_filte
           <option value="">Any event</option>
           {event_types.map((event_type) => (
             <option key={event_type} value={event_type}>
-              {formatCodeLabel(event_type)}
+              {describeAuditEventType(event_type)}
             </option>
           ))}
         </select>

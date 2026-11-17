@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { CustomerServicingAdapter } from '../core_banking/customer_servicing.adapter';
 import { TransactionClient } from '../database/types/transaction_client.type';
 import { UNKNOWN_CUSTOMER_ID } from '../facts/constants/action_code.constant';
 import {
@@ -26,6 +27,7 @@ export class NotifierService {
   constructor(
     private readonly notifications_repository: NotificationsRepository,
     private readonly live_events_publisher: LiveEventsPublisher,
+    private readonly customer_servicing_adapter: CustomerServicingAdapter,
   ) {}
 
   sendNotification(
@@ -68,19 +70,23 @@ export class NotifierService {
     await this.publishNotification('notification.updated', notification);
   }
 
-  private sendCaseSms(
+  // An SMS, or a letter for a customer who has turned SMS alerts off.
+  private async sendCaseSms(
     transaction: TransactionClient,
     message_context: CaseMessageContext,
     sms_body: string | null,
   ): Promise<NotificationRecord | null> {
     if (!sms_body || message_context.customer_id === UNKNOWN_CUSTOMER_ID) {
-      return Promise.resolve(null);
+      return null;
     }
+    const preferences = await this.customer_servicing_adapter.getPreferences(
+      message_context.customer_id,
+    );
     return this.sendNotification(transaction, {
       customer_id: message_context.customer_id,
       call_id: message_context.call_id,
       case_number: message_context.case_number,
-      channel: 'SMS',
+      channel: preferences.sms_alerts ? 'SMS' : 'LETTER',
       kind: 'CASE_UPDATE',
       body: sms_body,
     });

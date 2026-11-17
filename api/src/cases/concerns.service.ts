@@ -10,6 +10,7 @@ import {
 } from '../facts/constants/action_code.constant';
 import { SoftSignals } from '../facts/types/soft_signals.type';
 import { normaliseSoftSignals } from '../facts/utils/merge_soft_signals.util';
+import { IdentityRecordsService } from '../identity_records/identity_records.service';
 import { ESCALATION_TIER } from '../policies/constants/route_tier.constant';
 import { PoliciesService } from '../policies/policies.service';
 import { formatCurrency } from '../shared_kernel/utils/format_currency.util';
@@ -29,6 +30,7 @@ const CARE_SKILL = 'CARE';
 interface ConcernContext {
   call: CallRecord;
   caller: Caller;
+  identity_level: number;
   soft_signals: SoftSignals;
 }
 
@@ -40,6 +42,7 @@ export class ConcernsService {
     private readonly call_records_service: CallRecordsService,
     private readonly core_banking_adapter: CoreBankingAdapter,
     private readonly policies_service: PoliciesService,
+    private readonly identity_records_service: IdentityRecordsService,
     private readonly case_intake_service: CaseIntakeService,
     private readonly cases_repository: CasesRepository,
     private readonly proposal_result_factory: ProposalResultFactory,
@@ -53,9 +56,13 @@ export class ConcernsService {
       : is_scam_concern
         ? DEFAULT_SCAM_SIGNALS
         : DEFAULT_VULNERABILITY_SIGNALS;
+    const identity_summary = await this.identity_records_service.summariseCall(
+      call.call_id,
+    );
     const concern_context: ConcernContext = {
       call,
       caller: this.case_intake_service.resolveCaller(call),
+      identity_level: identity_summary.identity_level,
       soft_signals: normaliseSoftSignals({
         scam_coaching_signals: is_scam_concern ? signals : [],
         vulnerability_signals: is_scam_concern ? [] : signals,

@@ -34,9 +34,12 @@ export function CasePackHeader({ engine_case, current_time_ms, onClose }: CasePa
       </div>
       <div className="text-right text-sm">
         {is_awaiting_decision ? <SlaCountdown sla_due_at={engine_case.sla_due_at} current_time_ms={current_time_ms} /> : null}
-        <p className="text-ink-soft">
-          Routed to <span className="font-medium text-ink">{engine_case.assigned_staff_name ?? "the team queue"}</span>
-        </p>
+        {/* Tier 1 cases are decided by policy on the call, so nobody was routed. */}
+        {engine_case.tier === 1 && !engine_case.assigned_staff_name ? null : (
+          <p className="text-ink-soft">
+            Routed to <span className="font-medium text-ink">{engine_case.assigned_staff_name ?? "the team queue"}</span>
+          </p>
+        )}
         {engine_case.routing_rule ? <p className="max-w-xs text-xs text-ink-faint">{engine_case.routing_rule}</p> : null}
       </div>
     </header>

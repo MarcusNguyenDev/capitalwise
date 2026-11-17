@@ -7,7 +7,9 @@ import { readActiveHold } from "@/shared/call_hold/apply_call_hold.util";
 import { OnHoldBadge } from "@/shared/call_hold/on_hold_badge.component";
 import { formatDuration, secondsBetween } from "@/shared/format/format_values.util";
 import { useCurrentTime } from "@/shared/format/use_current_time.hook";
+import { CallIdentityBadge } from "@/shared/status/call_identity_badge.component";
 import { CallStatusBadge } from "@/shared/status/call_status_badge.component";
+import { UNIDENTIFIED_CALLER_NAME } from "@/shared/status/status_wording.constant";
 import type { LiveCall } from "@/shared/types/call.type";
 import { Button } from "@/shared/ui/button.component";
 import { IconButton } from "@/shared/ui/icon_button.component";
@@ -45,8 +47,9 @@ export function CallDetailHeader({ call, staff_call_audio, supervisor_actions, o
       <IconButton label="Back to the queue" icon={<ArrowLeft className="size-4" aria-hidden />} onClick={onClose} className="lg:hidden" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="truncate text-lg font-semibold">{call.customer_name ?? "Unknown caller"}</h2>
+          <h2 className="truncate text-lg font-semibold">{call.customer_name ?? UNIDENTIFIED_CALLER_NAME}</h2>
           <CallStatusBadge status={call.status} staff_name={call.assigned_staff_name} />
+          <CallIdentityBadge call={call} />
           {hold ? <OnHoldBadge hold={hold} current_time_ms={current_time_ms} should_show_reason /> : null}
         </div>
         <p className="mt-0.5 truncate text-sm text-ink-soft">

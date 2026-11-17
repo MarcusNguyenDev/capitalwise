@@ -1,11 +1,12 @@
 import { ChevronRight } from "lucide-react";
 
-import { formatCodeLabel, formatDateTime, formatFactValue } from "@/shared/format/format_values.util";
+import { formatDateTime, formatFactValue } from "@/shared/format/format_values.util";
 import type { AuditEvent, AuditEventFilter } from "@/shared/types/case.type";
 import { Badge } from "@/shared/ui/badge.component";
 import { JsonView } from "@/shared/ui/json_view.component";
 
 import { ACTOR_TYPE_LABELS, ACTOR_TYPE_TONES, CALL_ID_PREVIEW_LENGTH } from "../constants/audit_view.constant";
+import { describeAuditEvent } from "../utils/describe_audit_event.util";
 
 const DETAIL_PREVIEW_ENTRY_COUNT = 3;
 const FILTER_LINK_CLASS_NAME = "rounded px-1.5 py-0.5 font-mono text-xs text-info hover:bg-info-soft";
@@ -20,6 +21,7 @@ function summariseDetail(detail: Record<string, unknown>): string {
 
 /** One record: when, who, what happened, and links to narrow the log to its call or case. Raw detail on expand. */
 export function AuditEventRow({ audit_event, onFilter }: { audit_event: AuditEvent; onFilter: (filter_change: AuditEventFilter) => void }) {
+  const event_description = describeAuditEvent(audit_event);
   return (
     <li className="animate-fade-in border-b border-line">
       <details className="group">
@@ -31,7 +33,9 @@ export function AuditEventRow({ audit_event, onFilter }: { audit_event: AuditEve
             <span className="truncate">{audit_event.actor_name ?? audit_event.actor_id ?? ""}</span>
           </span>
           <span className="min-w-0 max-xl:col-start-3">
-            <span className="block truncate font-medium">{formatCodeLabel(audit_event.event_type)}</span>
+            <span className="block truncate font-medium" title={event_description}>
+              {event_description}
+            </span>
           </span>
           <span className="flex min-w-0 items-center justify-end gap-2 max-xl:col-start-3 max-xl:justify-start">
             <span className="min-w-0 flex-1 truncate text-ink-faint">{summariseDetail(audit_event.detail)}</span>

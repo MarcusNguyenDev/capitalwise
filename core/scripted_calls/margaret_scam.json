@@ -4,41 +4,36 @@
   "customer_id": "CUS-1004",
   "caller_number": "+61491570159",
   "steps": [
-    { "type": "ai", "text": "Hello, you've reached {{bank_name}}'s AI specialist. This call is recorded." },
+    { "type": "ai", "text": "Hello, thanks for calling {{bank_name}}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?" },
     { "type": "tool", "tool_name": "get_caller_context", "args": {} },
-    { "type": "ai", "text": "Hello Margaret, how can I help you today?" },
-    { "type": "customer", "text": "Hello dear. I sent a payment this morning, eighteen thousand five hundred dollars, and it hasn't gone through. I need it released straight away, please." },
-    { "type": "insight", "intent": "Held payment", "sentiment": "NEGATIVE", "summary": "Margaret wants an $18,500 payment released urgently." },
-    { "type": "ai", "text": "I can look into that with you, Margaret. I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line." },
-    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
-    { "type": "ai", "text": "Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "customer", "text": "Hello dear. It's Margaret Collins." },
+    { "type": "ai", "text": "Thank you. How can I help you today?" },
+    { "type": "customer", "text": "I sent a payment this morning, eighteen thousand five hundred dollars, and it hasn't gone through. I need it released straight away, please." },
+    { "type": "insight", "intent": "Held payment", "sentiment": "NEGATIVE", "summary": "Caller wants an $18,500 payment released urgently." },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "ai", "text": "I can look into that with you. First I just need to confirm a couple of details, one at a time. Could you tell me your date of birth?" },
+    { "type": "customer", "text": "The 3rd of March, 1948." },
+    { "type": "ai", "text": "Thank you. And what's the postcode where you live?" },
+    { "type": "customer", "text": "4221. That's Palm Beach." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Margaret Collins"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "3rd of March 1948"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4221"}]} },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 2} },
+    { "type": "ai", "text": "Thank you, {{submit_identity_answers.first_name}}. Because this is about a payment, just one more quick security question. {{start_identity_check.questions.0.prompt}}" },
+    { "type": "customer", "text": "My pension? About eleven hundred and forty dollars." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "About eleven hundred and forty dollars"}]} },
+    { "type": "ai", "text": "Thank you, that's confirmed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_held_payments", "args": {} },
     { "type": "ai", "text": "Thanks for holding. I can see it. The eighteen thousand five hundred dollars is on hold for a security review. Can you tell me a little about what the payment is for?" },
     { "type": "customer", "text": "The bank's security team rang me. They're on my other phone right now. They said my account's been hacked and I have to move my money to a safe account today. It's urgent, and they said not to tell anyone." },
     { "type": "ai", "text": "Thank you for telling me, Margaret. Thanks, just a moment while I check that for you." },
-    {
-      "type": "tool",
-      "tool_name": "flag_concern",
-      "args": {
-        "type": "SCAM_COACHING",
-        "quotes": [
-          "The bank's security team rang me. They're on my other phone right now.",
-          "I have to move my money to a safe account today.",
-          "It's urgent, and they said not to tell anyone."
-        ],
-        "signals": ["TOLD_TO_MOVE_MONEY", "SAFE_ACCOUNT", "URGENCY", "SECRECY", "THIRD_PARTY_ON_LINE"]
-      }
-    },
+    { "type": "tool", "tool_name": "flag_concern", "args": {"type": "SCAM_COACHING", "quotes": ["The bank's security team rang me. They're on my other phone right now.", "I have to move my money to a safe account today.", "It's urgent, and they said not to tell anyone."], "signals": ["TOLD_TO_MOVE_MONEY", "SAFE_ACCOUNT", "URGENCY", "SECRECY", "THIRD_PARTY_ON_LINE"]} },
     { "type": "insight", "intent": "Held payment, possible scam", "sentiment": "DISTRESSED", "summary": "Margaret was told by a caller claiming to be bank security to move $18,500 to a \"safe account\", urgently and in secret. The payment stays on hold." },
     { "type": "ai", "text": "Margaret, your money is safe right where it is, and that payment will stay on hold for now. {{bank_name}} will never ask you to move money to keep it safe." },
-    { "type": "ai", "text": "{{flag_concern.specialist_name}} from our fraud team will speak with you straight away, on this call. Until then, please don't share any codes or let anyone control your phone or computer." },
+    { "type": "ai", "text": "For your protection, {{flag_concern.specialist_name}} from our fraud team will speak with you straight away, on this call, and already has everything you've told me. Until then, please don't share any codes or let anyone control your phone or computer." },
     { "type": "customer", "text": "Oh. But they said it was urgent. They sounded so official." },
     { "type": "ai", "text": "I understand, and you've done nothing wrong by calling us. It's quite alright to hang up on the other call. I'll stay right here with you until {{flag_concern.specialist_name}} joins." },
-    {
-      "type": "await_takeover",
-      "timeout_seconds": 45,
-      "ai_if_timeout": "Thanks for your patience, Margaret. {{flag_concern.specialist_name}} is just finishing another call and will ring you straight back on this number. Your payment stays safely on hold, and your case number is {{flag_concern.case_number}}."
-    },
-    { "type": "ai", "text": "Thanks, Margaret. Your payment stays safely on hold and your savings haven't moved. If anyone rings asking you to move money, hang up and call the number on the back of your card. Take care." }
+    { "type": "await_takeover", "timeout_seconds": 45, "ai_if_timeout": "Thanks for your patience, Margaret. {{flag_concern.specialist_name}} is just finishing another call and will ring you straight back on this number. Your payment stays safely on hold, and your case number is {{flag_concern.case_number}}." },
+    { "type": "ai", "text": "Thanks, Margaret. Your payment stays safely on hold and your savings haven't moved. If anyone rings asking you to move money, hang up and call the number on the back of your card. Is there anything else I can help with today?" },
+    { "type": "customer", "text": "No, dear. Thank you so much." },
+    { "type": "ai", "text": "You're very welcome, Margaret. Take good care of yourself." }
   ]
 }

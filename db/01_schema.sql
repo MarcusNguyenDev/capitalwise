@@ -27,16 +27,24 @@ CREATE TABLE bank.products (
 );
 
 CREATE TABLE bank.customers (
-  customer_id    text PRIMARY KEY,
-  first_name     text NOT NULL,
-  last_name      text NOT NULL,
-  date_of_birth  date NOT NULL,
-  mobile_phone   text NOT NULL UNIQUE CHECK (mobile_phone LIKE '+6149157%'),
-  email          text NOT NULL,
-  suburb         text NOT NULL,
-  state          text NOT NULL,
-  customer_since date NOT NULL
+  customer_id        text PRIMARY KEY,
+  first_name         text NOT NULL,
+  last_name          text NOT NULL,
+  date_of_birth      date NOT NULL,
+  mobile_phone       text NOT NULL UNIQUE CHECK (mobile_phone LIKE '+6149157%'),
+  email              text NOT NULL,
+  street_address     text NOT NULL,
+  suburb             text NOT NULL,
+  state              text NOT NULL,
+  postcode           text NOT NULL CHECK (postcode ~ '^[0-9]{4}$'),
+  -- When the postal address last changed. A recent change makes a card
+  -- replacement a specialist's job (the new card could go to a fraudster).
+  address_updated_at timestamptz NOT NULL,
+  customer_since     date NOT NULL
 );
+
+-- Identity questions look customers up by date of birth and postcode.
+CREATE INDEX customers_identity_idx ON bank.customers (date_of_birth, postcode);
 
 CREATE TABLE bank.accounts (
   account_id           text PRIMARY KEY,
@@ -66,9 +74,13 @@ CREATE TABLE bank.cards (
   customer_id text NOT NULL REFERENCES bank.customers (customer_id),
   card_type   text NOT NULL CHECK (card_type IN ('DEBIT', 'CREDIT')),
   last4       text NOT NULL CHECK (last4 ~ '^[0-9]{4}$'),
-  status      text NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'TEMP_LOCKED', 'BLOCKED_LOST', 'BLOCKED_STOLEN')),
+  -- INACTIVE: a new card not yet activated. CANCELLED: replaced by a new card.
+  status      text NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'TEMP_LOCKED', 'BLOCKED_LOST', 'BLOCKED_STOLEN', 'CANCELLED')),
   expires_on  date NOT NULL
 );
+
+-- Replacement cards issued over the phone: CRD-90001 onwards.
+CREATE SEQUENCE bank.card_seq START 90001;
 
 CREATE TABLE bank.payees (
   payee_id            text PRIMARY KEY,
@@ -100,7 +112,7 @@ CREATE TABLE bank.transactions (
   created_at      timestamptz NOT NULL DEFAULT now(),
   posted_at       timestamptz,
   status          text NOT NULL CHECK (status IN ('PENDING', 'POSTED', 'DECLINED', 'HELD')),
-  txn_type        text NOT NULL CHECK (txn_type IN ('PURCHASE', 'SALARY', 'GOVT_BENEFIT', 'TRANSFER_IN', 'TRANSFER_OUT', 'DIRECT_DEBIT', 'FEE', 'FEE_REFUND', 'LOAN_REPAYMENT', 'INTEREST')),
+  txn_type        text NOT NULL CHECK (txn_type IN ('PURCHASE', 'SALARY', 'GOVT_BENEFIT', 'TRANSFER_IN', 'TRANSFER_OUT', 'DIRECT_DEBIT', 'FEE', 'FEE_REFUND', 'LOAN_REPAYMENT', 'INTEREST', 'DISPUTE_CREDIT')),
   channel         text NOT NULL CHECK (channel IN ('CARD', 'NPP', 'BECS', 'BPAY', 'INTERNAL')),
   amount          numeric(14,2) NOT NULL,
   description     text NOT NULL,
@@ -155,6 +167,84 @@ CREATE TABLE bank.customer_flags (
   flag_type   text NOT NULL CHECK (flag_type IN ('VULNERABILITY', 'POWER_OF_ATTORNEY', 'INTERPRETER_REQUIRED')),
   note        text NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE bank.card_order_seq START 6001;
+
+CREATE TABLE bank.card_orders (
+  order_id         text PRIMARY KEY DEFAULT 'ORD-' || nextval('bank.card_order_seq'),
+  customer_id      text NOT NULL REFERENCES bank.customers (customer_id),
+  replaces_card_id text NOT NULL REFERENCES bank.cards (card_id),
+  new_card_id      text NOT NULL REFERENCES bank.cards (card_id),
+  -- Snapshot of where the card was sent, at the time of ordering.
+  delivery_suburb  text NOT NULL,
+  status           text NOT NULL DEFAULT 'ORDERED' CHECK (status IN ('ORDERED', 'DISPATCHED')),
+  expected_by      date NOT NULL,
+  case_number      text,
+  created_at       timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX card_orders_customer_idx ON bank.card_orders (customer_id, created_at DESC);
+
+CREATE SEQUENCE bank.dispute_seq START 8001;
+
+CREATE TABLE bank.disputes (
+  dispute_id                text PRIMARY KEY DEFAULT 'DSP-' || nextval('bank.dispute_seq'),
+  txn_id                    text NOT NULL REFERENCES bank.transactions (txn_id),
+  account_id                text NOT NULL REFERENCES bank.accounts (account_id),
+  customer_id               text NOT NULL REFERENCES bank.customers (customer_id),
+  reason                    text NOT NULL CHECK (reason IN ('DUPLICATE', 'UNRECOGNISED', 'NOT_RECEIVED', 'WRONG_AMOUNT')),
+  details                   text,
+  amount                    numeric(14,2) NOT NULL CHECK (amount > 0),
+  status                    text NOT NULL DEFAULT 'LODGED' CHECK (status IN ('LODGED', 'RESOLVED')),
+  provisional_credit_txn_id text REFERENCES bank.transactions (txn_id),
+  expected_by               date NOT NULL,
+  case_number               text,
+  created_at                timestamptz NOT NULL DEFAULT now()
+);
+
+-- One open dispute per transaction.
+CREATE UNIQUE INDEX disputes_single_open_idx ON bank.disputes (txn_id) WHERE status = 'LODGED';
+
+CREATE SEQUENCE bank.statement_request_seq START 4001;
+
+CREATE TABLE bank.statement_requests (
+  request_id   text PRIMARY KEY DEFAULT 'STR-' || nextval('bank.statement_request_seq'),
+  customer_id  text NOT NULL REFERENCES bank.customers (customer_id),
+  account_id   text NOT NULL REFERENCES bank.accounts (account_id),
+  months       integer NOT NULL CHECK (months BETWEEN 1 AND 12),
+  delivery     text NOT NULL CHECK (delivery IN ('POST', 'EMAIL')),
+  -- Snapshot of the suburb (POST) or email address (EMAIL) it went to.
+  delivery_to  text NOT NULL,
+  is_large_print boolean NOT NULL DEFAULT false,
+  status       text NOT NULL DEFAULT 'REQUESTED' CHECK (status IN ('REQUESTED', 'SENT')),
+  expected_by  date NOT NULL,
+  case_number  text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE bank.customer_preferences (
+  customer_id         text PRIMARY KEY REFERENCES bank.customers (customer_id),
+  paper_statements    boolean NOT NULL DEFAULT false,
+  sms_alerts          boolean NOT NULL DEFAULT true,
+  large_print_letters boolean NOT NULL DEFAULT false,
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE bank.payment_arrangement_seq START 2001;
+
+CREATE TABLE bank.payment_arrangements (
+  arrangement_id   text PRIMARY KEY DEFAULT 'PMA-' || nextval('bank.payment_arrangement_seq'),
+  account_id       text NOT NULL REFERENCES bank.accounts (account_id),
+  customer_id      text NOT NULL REFERENCES bank.customers (customer_id),
+  weeks            integer NOT NULL CHECK (weeks BETWEEN 1 AND 12),
+  weekly_amount    numeric(14,2) CHECK (weekly_amount > 0),
+  start_on         date NOT NULL,
+  end_on           date NOT NULL CHECK (end_on > start_on),
+  status           text NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'COMPLETED', 'CANCELLED')),
+  late_fees_paused boolean NOT NULL DEFAULT true,
+  case_number      text,
+  created_at       timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE SEQUENCE bank.contact_seq START 30001;
@@ -227,7 +317,10 @@ CREATE TABLE engine.action_types (
   risk_class        text NOT NULL CHECK (risk_class IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
   reversible        boolean NOT NULL,
   required_evidence text[] NOT NULL DEFAULT '{}',
-  required_skill    text
+  required_skill    text,
+  -- 0 = anyone, 1 = name, date of birth and postcode, 2 = level 1 plus a
+  -- question about the customer's own recent activity.
+  required_identity_level smallint NOT NULL DEFAULT 2 CHECK (required_identity_level BETWEEN 0 AND 2)
 );
 
 CREATE TABLE engine.policies (
@@ -252,7 +345,12 @@ CREATE TABLE engine.calls (
   status              text NOT NULL DEFAULT 'AI_ACTIVE' CHECK (status IN ('AI_ACTIVE', 'NEEDS_ATTENTION', 'HUMAN_ACTIVE', 'ENDED')),
   handled_by_agent_id text REFERENCES engine.ai_agents (agent_id),
   assigned_staff_id   text REFERENCES engine.staff_users (staff_id),
+  -- identity_verified stays as identity_level >= 1. core writes all of these;
+  -- the api's authoritative record is engine.identity_attempts.
   identity_verified   boolean NOT NULL DEFAULT false,
+  identity_level      smallint NOT NULL DEFAULT 0 CHECK (identity_level BETWEEN 0 AND 2),
+  identity_method     text CHECK (identity_method IN ('KNOWLEDGE', 'APP_PUSH')),
+  is_identity_locked  boolean NOT NULL DEFAULT false,
   verified_at         timestamptz,
   intent              text,
   sentiment           text NOT NULL DEFAULT 'NEUTRAL' CHECK (sentiment IN ('POSITIVE', 'NEUTRAL', 'NEGATIVE', 'DISTRESSED')),
@@ -304,7 +402,9 @@ CREATE TABLE engine.cases (
   action_code          text NOT NULL REFERENCES engine.action_types (action_code),
   params               jsonb NOT NULL DEFAULT '{}'::jsonb,
   tier                 integer NOT NULL CHECK (tier IN (1, 2, 3)),
-  status               text NOT NULL CHECK (status IN ('AUTO_EXECUTED', 'PENDING_APPROVAL', 'ESCALATED', 'APPROVED', 'EDITED_AND_APPROVED', 'REJECTED', 'EXECUTED')),
+  -- AUTO_DECLINED: the policy declined on the spot (route AUTO, recommend
+  -- DECLINE). Nothing is executed; the customer can ask for a review.
+  status               text NOT NULL CHECK (status IN ('AUTO_EXECUTED', 'AUTO_DECLINED', 'PENDING_APPROVAL', 'ESCALATED', 'APPROVED', 'EDITED_AND_APPROVED', 'REJECTED', 'EXECUTED')),
   priority             integer NOT NULL DEFAULT 3 CHECK (priority BETWEEN 1 AND 5),
   summary              text NOT NULL,
   customer_statement   text,
@@ -340,7 +440,7 @@ CREATE TABLE engine.notifications (
   customer_id     text NOT NULL,
   call_id         uuid REFERENCES engine.calls (call_id),
   case_number     text REFERENCES engine.cases (case_number),
-  channel         text NOT NULL CHECK (channel IN ('APP_PUSH', 'SMS')),
+  channel         text NOT NULL CHECK (channel IN ('APP_PUSH', 'SMS', 'LETTER')),
   kind            text NOT NULL CHECK (kind IN ('IDENTITY_CHECK', 'CASE_UPDATE')),
   body            text NOT NULL,
   status          text NOT NULL DEFAULT 'SENT' CHECK (status IN ('SENT', 'APPROVED', 'DENIED', 'EXPIRED')),
@@ -378,8 +478,48 @@ CREATE TABLE engine.autonomy_proposals (
   status          text NOT NULL DEFAULT 'PENDING_SIGN_OFF' CHECK (status IN ('PENDING_SIGN_OFF', 'SIGNED_OFF', 'DECLINED')),
   created_at      timestamptz NOT NULL DEFAULT now(),
   signed_off_by   text REFERENCES engine.staff_users (staff_id),
-  signed_off_at   timestamptz
+  signed_off_at   timestamptz,
+  -- The policy version that put a signed-off proposal into effect, if any.
+  published_policy_id text REFERENCES engine.policies (policy_id)
 );
+
+-- ===========================================================================
+-- Identity: knowledge checks with step-up. Answers and expected values are
+-- never stored, only which kinds of question were asked and the outcome.
+-- ===========================================================================
+
+CREATE SEQUENCE engine.identity_challenge_seq START 1;
+
+CREATE TABLE engine.identity_challenges (
+  challenge_id        text PRIMARY KEY DEFAULT 'IDC-' || lpad(nextval('engine.identity_challenge_seq')::text, 6, '0'),
+  call_id             uuid NOT NULL REFERENCES engine.calls (call_id),
+  level               smallint NOT NULL CHECK (level IN (1, 2)),
+  -- [{ question_id, kind, prompt }]
+  questions           jsonb NOT NULL,
+  -- Level 2 questions are about the customer verified at level 1.
+  subject_customer_id text,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX identity_challenges_call_idx ON engine.identity_challenges (call_id, created_at);
+
+CREATE SEQUENCE engine.identity_attempt_seq START 1;
+
+CREATE TABLE engine.identity_attempts (
+  attempt_id           text PRIMARY KEY DEFAULT 'IDA-' || lpad(nextval('engine.identity_attempt_seq')::text, 6, '0'),
+  call_id              uuid NOT NULL REFERENCES engine.calls (call_id),
+  -- NULL for an approved app push, which grants level 1 without questions.
+  challenge_id         text REFERENCES engine.identity_challenges (challenge_id),
+  method               text NOT NULL DEFAULT 'KNOWLEDGE' CHECK (method IN ('KNOWLEDGE', 'APP_PUSH')),
+  level                smallint NOT NULL CHECK (level IN (1, 2)),
+  question_kinds       text[] NOT NULL DEFAULT '{}',
+  is_passed            boolean NOT NULL,
+  resolved_customer_id text,
+  created_at           timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CHECK (NOT is_passed OR resolved_customer_id IS NOT NULL)
+);
+
+CREATE INDEX identity_attempts_call_idx ON engine.identity_attempts (call_id, created_at);
 
 -- ===========================================================================
 -- Audit: enforced in the database so the application cannot forget

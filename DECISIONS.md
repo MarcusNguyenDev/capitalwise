@@ -232,3 +232,47 @@ instructions won.
   "just decided" row, then leaves.
 - Call replay runs at 4x and shortens silences longer than 8 seconds.
 - The audit log shows the latest 150 records.
+
+## Identity and self-service (revised after owner feedback)
+
+- **The original brief's "caller ID plus app push" was dropped as the main
+  method.** The owner's test case is a 90-year-old on a landline or a basic
+  phone, who has no app. Identity is now confirmed in conversation:
+  - **Level 1:** name, date of birth and postcode.
+  - **Level 2:** one dynamic question about the customer's own recent activity.
+
+  The server checks every answer; the AI never sees the expected values. The
+  app push remains an optional level-1 method.
+- **Step-up, not one gate.** Level 1 allows only protective actions (lock or
+  block a card, a statement to the address on file, a callback) and a reduced
+  overview with no balances or card digits. Everything that reads account
+  details or changes something needs level 2. This stops someone who knows a
+  victim's basic details from getting the AI to read out the level-2 answers.
+- **Lockout to fraud.** Two failed attempts at a level lock the call and raise
+  a Tier 3 case for a fraud specialist. The caller is never told which answer
+  was wrong.
+- **Customer resolution by answers.** Caller ID is a hint only. If the answers
+  match exactly one customer, the call is bound to them: a landline not on
+  file, or a spouse on a shared number.
+- **The AI completes the job.** The design rule for every new policy: AUTO when
+  the action is protective or customer-favourable and checkable against the
+  bank's own data; a person when a mistake could move money, hand the account
+  to someone else, or harm a vulnerable customer. New self-service actions:
+  - card: report lost or stolen, replace, unlock, activate;
+  - money: fee refunds (REFUND_FEE v4 promotes the first small refund to
+    Tier 1, the earned-autonomy story); duplicate-charge disputes with a
+    provisional credit up to $500; short payment arrangements;
+  - servicing: statements, preferences (paper, SMS alerts, large-print
+    letters).
+
+  Policy escalates:
+  - security-sensitive changes;
+  - a replacement card when the address changed in the last 30 days;
+  - large or unrecognised charges;
+  - hardship, which a person decides, as the law expects;
+  - anything involving scam or vulnerability signs.
+- **A policy can decline on the spot** (`AUTO_DECLINED`, for example a third
+  fee refund in a year). The caller hears why and is offered a specialist
+  review, instead of waiting for a person to say no.
+- **Customers have addresses and postcodes;** dates of birth are fixed dates
+  so identity answers are stable across reseeds.

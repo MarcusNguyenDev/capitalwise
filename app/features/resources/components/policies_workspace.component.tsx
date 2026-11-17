@@ -7,6 +7,7 @@ import { formatCodeLabel } from "@/shared/format/format_values.util";
 import { useListNavigation } from "@/shared/keyboard/use_list_navigation.hook";
 import { useLiveQuery } from "@/shared/live/use_live_query.hook";
 import { useQueryParam } from "@/shared/navigation/use_query_param.hook";
+import { describeAction, formatActionLabel } from "@/shared/status/format_action_label.util";
 import { EmptyState } from "@/shared/ui/empty_state.component";
 import { ErrorState } from "@/shared/ui/error_state.component";
 import { PageHeader } from "@/shared/ui/page_header.component";
@@ -20,6 +21,14 @@ const NO_REFRESH_EVENTS: readonly string[] = [];
 const ACTION_LIST_ELEMENT_ID = "registered_action_list";
 
 /** Policies: the only actions the AI can propose, and the versioned rules that decide what happens to each. */
+/** "identity level 2 · ", "no identity check · ", or nothing when the registry does not say. */
+function describeIdentityRequirement(required_identity_level: number | undefined): string {
+  if (required_identity_level === undefined) {
+    return "";
+  }
+  return required_identity_level === 0 ? "no identity check · " : `identity level ${required_identity_level} · `;
+}
+
 export function PoliciesWorkspace() {
   const registry_query = useLiveQuery(fetchActionRegistry, NO_REFRESH_EVENTS);
   const [selected_action_code, setSelectedActionCode] = useQueryParam("action");
@@ -52,10 +61,11 @@ export function PoliciesWorkspace() {
                   is_highlighted={registered_action.action_code === list_navigation.highlighted_id}
                   onOpen={() => setSelectedActionCode(registered_action.action_code)}
                 >
-                  <span className="block font-semibold">{formatCodeLabel(registered_action.action_code)}</span>
-                  <span className="block truncate text-sm text-ink-soft">{registered_action.description}</span>
+                  <span className="block font-semibold">{formatActionLabel(registered_action.action_code)}</span>
+                  <span className="block truncate text-sm text-ink-soft">{describeAction(registered_action.action_code, registered_action.description)}</span>
                   <span className="block text-xs text-ink-faint">
                     {formatCodeLabel(registered_action.risk_class)} risk ·{" "}
+                    {describeIdentityRequirement(registered_action.required_identity_level)}
                     {registered_action.active_policy ? `v${registered_action.active_policy.version} active` : "no active policy"}
                   </span>
                 </QueueItem>

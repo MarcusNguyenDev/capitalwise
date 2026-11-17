@@ -9,44 +9,43 @@ import { FactBuilderService } from '../src/facts/fact_builder.service';
 import { normaliseSoftSignals } from '../src/facts/utils/merge_soft_signals.util';
 import { SEEDED_ACTIVE_POLICIES } from '../src/policies/fixtures/seeded_policies.fixture';
 import { PoliciesService } from '../src/policies/policies.service';
-import { SYSTEM_ACTOR } from '../src/shared_kernel/constants/system_actor.constant';
 import { configureApplication } from '../src/shared_kernel/setup/configure_application';
+import { startTestCall, TestCaller } from './support/test_calls';
 
 // Runs against the real local database (root docker compose). The suite
 // resets the demo data first, so it is repeatable.
 
 const RESET_TIMEOUT_MS = 120_000;
 
-interface TestCaller {
-  customer_id: string | null;
-  customer_name: string | null;
-  caller_number: string;
-  identity_verified: boolean;
-}
-
 const SARAH: TestCaller = {
   customer_id: 'CUS-1001',
   customer_name: 'Sarah Mitchell',
   caller_number: '+61491570156',
-  identity_verified: true,
+  identity_level: 2,
 };
 const DANIEL: TestCaller = {
   customer_id: 'CUS-1002',
   customer_name: 'Daniel Okafor',
   caller_number: '+61491570157',
-  identity_verified: true,
+  identity_level: 2,
 };
 const PRIYA: TestCaller = {
   customer_id: 'CUS-1003',
   customer_name: 'Priya Sharma',
   caller_number: '+61491570158',
-  identity_verified: true,
+  identity_level: 2,
 };
 const MARGARET: TestCaller = {
   customer_id: 'CUS-1004',
   customer_name: 'Margaret Collins',
   caller_number: '+61491570159',
-  identity_verified: true,
+  identity_level: 2,
+};
+const AVA: TestCaller = {
+  customer_id: 'CUS-3003',
+  customer_name: 'Ava Kowalski',
+  caller_number: '+61491575254',
+  identity_level: 2,
 };
 
 describe('api decision pipeline (e2e)', () => {
@@ -58,21 +57,15 @@ describe('api decision pipeline (e2e)', () => {
 
   const api = () => request(app.getHttpServer());
 
-  async function startCall(test_caller: TestCaller): Promise<string> {
-    return database.runInTransaction(SYSTEM_ACTOR, async (transaction) => {
-      const call_rows = await transaction.query<{ call_id: string }>(
-        `INSERT INTO engine.calls (caller_number, customer_id, customer_name, channel, status, handled_by_agent_id, identity_verified, verified_at)
-         VALUES ($1, $2, $3, 'BROWSER', 'AI_ACTIVE', 'AI-01', $4, CASE WHEN $4 THEN now() END)
-         RETURNING call_id`,
-        [
-          test_caller.caller_number,
-          test_caller.customer_id,
-          test_caller.customer_name,
-          test_caller.identity_verified,
-        ],
-      );
-      return call_rows[0].call_id;
-    });
+  function startCall(test_caller: TestCaller): Promise<string> {
+    return startTestCall(database, test_caller);
+  }
+
+  async function readAgentPromptVersion(): Promise<string> {
+    const agent_rows = await database.query<{ prompt_version: string }>(
+      `SELECT prompt_version FROM engine.ai_agents WHERE agent_id = 'AI-01'`,
+    );
+    return agent_rows[0].prompt_version;
   }
 
   async function decidePersona(
@@ -85,6 +78,7 @@ describe('api decision pipeline (e2e)', () => {
       action_code,
       call: { call_id: 'not-stored', identity_verified: true } as CallRecord,
       customer_id: test_caller.customer_id as string,
+      identity_level: 2,
       params,
       customer_statement: 'In my own words.',
       soft_signals: normaliseSoftSignals({ vulnerability_signals }),
@@ -205,7 +199,7 @@ describe('api decision pipeline (e2e)', () => {
       });
     });
 
-    it('Daniel REFUND_FEE TXN-F1002 -> RF-3 APPROVE/APPROVE 0.92', async () => {
+    it('Daniel REFUND_FEE TXN-F1002 -> RF-3 AUTO/APPROVE 0.92 (REFUND_FEE v4)', async () => {
       const { facts, resolved_params, evaluation } = await decidePersona(
         DANIEL,
         'REFUND_FEE',
@@ -225,7 +219,7 @@ describe('api decision pipeline (e2e)', () => {
       });
       expect(evaluation).toMatchObject({
         matched_rule_id: 'RF-3',
-        route: 'APPROVE',
+        route: 'AUTO',
         recommend: 'APPROVE',
         confidence: 0.92,
       });
@@ -280,7 +274,7 @@ describe('api decision pipeline (e2e)', () => {
       });
     });
 
-    it('Tom REFUND_FEE TXN-F1005 -> RF-2 APPROVE/DECLINE 0.85', async () => {
+    it('Tom REFUND_FEE TXN-F1005 -> RF-2 AUTO/DECLINE 0.9 (REFUND_FEE v4)', async () => {
       const tom: TestCaller = { ...SARAH, customer_id: 'CUS-1005' };
       const { facts, evaluation } = await decidePersona(tom, 'REFUND_FEE', {
         fee_txn_id: 'TXN-F1005',
@@ -292,9 +286,9 @@ describe('api decision pipeline (e2e)', () => {
       });
       expect(evaluation).toMatchObject({
         matched_rule_id: 'RF-2',
-        route: 'APPROVE',
+        route: 'AUTO',
         recommend: 'DECLINE',
-        confidence: 0.85,
+        confidence: 0.9,
       });
     });
 
@@ -337,7 +331,7 @@ describe('api decision pipeline (e2e)', () => {
     it('rejects an unverified caller, an unknown action, a missing call and model-claimed facts', async () => {
       const unverified_call_id = await startCall({
         ...SARAH,
-        identity_verified: false,
+        identity_level: 0,
       });
       const verified_call_id = await startCall(SARAH);
       const proposal = {
@@ -353,7 +347,9 @@ describe('api decision pipeline (e2e)', () => {
         .expect(403);
       expect(unverified_response.body).toMatchObject({
         status_code: 403,
-        error_code: 'IDENTITY_NOT_VERIFIED',
+        error_code: 'IDENTITY_LEVEL_REQUIRED',
+        required_level: 1,
+        current_level: 0,
       });
 
       const unknown_action_response = await api()
@@ -444,8 +440,9 @@ describe('api decision pipeline (e2e)', () => {
         route: 'AUTO',
         status: 'AUTO_EXECUTED',
         matched_rule_id: 'LC-1',
-        policy_id: 'POL-LOCK_CARD-1',
+        policy_id: 'POL-LOCK_CARD-2',
         handled_by: null,
+        outcome: 'DONE',
         is_executed: true,
         execution_result: {
           card_id: 'CRD-10011',
@@ -480,7 +477,7 @@ describe('api decision pipeline (e2e)', () => {
           case_number: proposal_result.case_number,
           channel: 'SMS',
           kind: 'CASE_UPDATE',
-          body: 'Your card ending 4821 has been temporarily locked. You can unlock it any time in the app.',
+          body: 'Your card ending 4821 has been temporarily locked. Call us any time to unlock it.',
         }),
       ]);
 
@@ -507,7 +504,7 @@ describe('api decision pipeline (e2e)', () => {
       expect(events_by_type.POLICY_EVALUATED.detail).toMatchObject({
         matched_rule_id: 'LC-1',
         route: 'AUTO',
-        policy_version: 1,
+        policy_version: 2,
       });
       expect(
         events_by_type.POLICY_EVALUATED.detail.conditions_evaluated,
@@ -585,7 +582,7 @@ describe('api decision pipeline (e2e)', () => {
         },
         assigned_staff_name: 'Sam Patel',
         model: 'self-hosted-llm',
-        prompt_version: '1.3',
+        prompt_version: await readAgentPromptVersion(),
       });
       expect(
         pack_response.body.evidence
@@ -741,7 +738,7 @@ describe('api decision pipeline (e2e)', () => {
       });
       expect(explanation.versions).toEqual({
         model: 'self-hosted-llm',
-        prompt_version: '1.3',
+        prompt_version: await readAgentPromptVersion(),
         policy_id: 'POL-HARDSHIP_REQUEST-1',
         policy_version: 1,
         policy_approved_by: 'STF-01',
@@ -1034,20 +1031,22 @@ describe('api decision pipeline (e2e)', () => {
 
   describe('vulnerability and human handover', () => {
     it('re-routes a pending fee refund to a CARE specialist when vulnerability is flagged', async () => {
-      const call_id = await startCall(DANIEL);
+      const call_id = await startCall(AVA);
       const proposal_response = await api()
         .post('/api/actions/propose')
         .send({
           call_id,
           action_code: 'REFUND_FEE',
-          params: { fee_txn_id: 'TXN-F1002' },
-          summary: 'Daniel asked for his $15 overdrawn fee back.',
+          params: { fee_txn_id: 'TXN-F3003' },
+          summary: 'Ava asked for her $15 overdrawn fee back.',
         })
         .expect(200);
       expect(proposal_response.body).toMatchObject({
         tier: 2,
-        matched_rule_id: 'RF-3',
-        confidence: 0.92,
+        status: 'PENDING_APPROVAL',
+        outcome: 'PENDING_REVIEW',
+        matched_rule_id: 'RF-DEFAULT',
+        confidence: 0.7,
         handled_by: { name: 'Jordan Lee' },
         expected_timing: 'within 4 business hours',
       });
@@ -1085,7 +1084,7 @@ describe('api decision pipeline (e2e)', () => {
         customer_id: null,
         customer_name: null,
         caller_number: '+61491579999',
-        identity_verified: false,
+        identity_level: 0,
       });
       const proposal_response = await api()
         .post('/api/actions/propose')
@@ -1133,7 +1132,7 @@ describe('api decision pipeline (e2e)', () => {
 
   describe('identity push', () => {
     it('is approved by the customer and audited as IDENTITY_VERIFIED', async () => {
-      const call_id = await startCall({ ...SARAH, identity_verified: false });
+      const call_id = await startCall({ ...SARAH, identity_level: 0 });
       const push_response = await api()
         .post('/api/notifications/identity_check')
         .send({ call_id })
@@ -1172,8 +1171,22 @@ describe('api decision pipeline (e2e)', () => {
         expect.objectContaining({
           actor_type: 'CUSTOMER',
           actor_id: 'CUS-1001',
+          detail: { method: 'APP_PUSH', level: 1, notification_id },
         }),
       ]);
+      // The optional app check grants level 1 only.
+      const identity_response = await api()
+        .get(`/api/identity/calls/${call_id}`)
+        .expect(200);
+      expect(identity_response.body).toEqual({
+        call_id,
+        identity_level: 1,
+        method: 'APP_PUSH',
+        is_locked: false,
+        failed_attempts: 0,
+        customer_id: 'CUS-1001',
+        concern_case_number: null,
+      });
     });
   });
 
@@ -1291,15 +1304,17 @@ describe('api decision pipeline (e2e)', () => {
         (action: { action_code: string }) =>
           action.action_code === 'REFUND_FEE',
       );
+      expect(refund_action).toMatchObject({ required_identity_level: 2 });
       expect(refund_action.active_policy).toMatchObject({
-        policy_id: 'POL-REFUND_FEE-3',
-        version: 3,
+        policy_id: 'POL-REFUND_FEE-4',
+        version: 4,
       });
       expect(
         refund_action.policy_history.map(
           (policy: { version: number }) => policy.version,
         ),
-      ).toEqual([3, 2]);
+      ).toEqual([4, 3, 2]);
+      expect(registry_response.body.actions).toHaveLength(14);
 
       const prompts_response = await api()
         .get('/api/resources/prompt_versions')
@@ -1308,14 +1323,20 @@ describe('api decision pipeline (e2e)', () => {
         prompts_response.body.map(
           (prompt: { version: string }) => prompt.version,
         ),
-      ).toEqual(['1.3', '1.2', '1.1', '1.0']);
+      ).toEqual(expect.arrayContaining(['1.3', '1.2', '1.1', '1.0']));
+      expect(
+        prompts_response.body.filter(
+          (prompt: { is_active: boolean }) => prompt.is_active,
+        ),
+      ).toHaveLength(1);
 
       const compare_response = await api().get('/api/compare').expect(200);
       expect(compare_response.body.legacy_journey.steps).toHaveLength(5);
       expect(
         compare_response.body.ai_journey.steps.find(
           (step: { label: string }) =>
-            step.label === 'Identity confirmed by app push',
+            step.label ===
+            'Identity confirmed in conversation (name, date of birth, postcode)',
         ),
       ).toMatchObject({ duration_seconds: 38, is_measured: true });
       expect(compare_response.body.measured.sample_call_count).toBe(11);
@@ -1378,7 +1399,15 @@ describe('api decision pipeline (e2e)', () => {
       const autonomy_response = await api()
         .get('/api/resources/autonomy')
         .expect(200);
-      expect(autonomy_response.body.proposals).toHaveLength(1);
+      expect(autonomy_response.body.proposals).toHaveLength(2);
+      expect(autonomy_response.body.proposals[1]).toMatchObject({
+        action_code: 'REFUND_FEE',
+        matched_rule_id: 'RF-3',
+        status: 'SIGNED_OFF',
+        proposed_by_name: 'Jordan Lee',
+        signed_off_by_name: 'Alex Chen',
+        published_policy_id: 'POL-REFUND_FEE-4',
+      });
     });
   });
 });

@@ -1,3 +1,11 @@
+// What the caller can be told happened:
+//   DONE            executed now (AUTO_EXECUTED, or EXECUTED after approval)
+//   DECLINED        AUTO_DECLINED by policy, or REJECTED by staff
+//   WITH_SPECIALIST escalated to a specialist (Tier 3)
+//   PENDING_REVIEW  waiting for a staff decision (Tier 2)
+export type ProposalOutcome =
+  'DONE' | 'DECLINED' | 'WITH_SPECIALIST' | 'PENDING_REVIEW';
+
 export interface ProposalResult {
   case_number: string;
   action_code: string;
@@ -18,7 +26,9 @@ export interface ProposalResult {
   response_due_on: string | null;
   is_executed: boolean;
   execution_result: Record<string, unknown> | null;
-  // One plain sentence the AI can safely say to the caller.
+  outcome: ProposalOutcome;
+  // One plain sentence the AI can say to the caller, with the concrete
+  // outcome. It never promises more than the case record shows.
   customer_message: string;
 }
 

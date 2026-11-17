@@ -10,7 +10,8 @@ export class CallRecordsRepository {
   async findCall(call_id: string): Promise<CallRecord | null> {
     const call_rows = await this.database.query<CallRecord>(
       `SELECT call.call_id, call.caller_number, call.customer_id, call.customer_name, call.channel, call.status,
-              call.handled_by_agent_id, call.assigned_staff_id, call.identity_verified, call.risk_level,
+              call.handled_by_agent_id, call.assigned_staff_id, call.identity_verified, call.identity_level,
+              call.identity_method, call.is_identity_locked, call.risk_level,
               call.started_at, call.ended_at,
               agent.model AS agent_model, agent.prompt_version AS agent_prompt_version
        FROM engine.calls AS call

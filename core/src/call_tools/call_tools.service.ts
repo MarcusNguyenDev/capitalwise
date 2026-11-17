@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AuditEventsRepository } from '../audit/audit_events.repository';
 import { CallHoldService } from '../calls/call_hold.service';
 import { CallsService } from '../calls/calls.service';
+import { readIdentityLevel } from '../calls/read_identity_level.util';
 import { CallRow } from '../calls/types/call_row.type';
 import { CallTurn } from '../calls/types/call_turn.type';
 import { EngineApiRejectedError } from '../engine_api/errors/engine_api_rejected.error';
@@ -14,6 +15,7 @@ import { ActionToolsHandler } from './handlers/action_tools.handler';
 import { BankingLookupToolsHandler } from './handlers/banking_lookup_tools.handler';
 import { CallInsightToolsHandler } from './handlers/call_insight_tools.handler';
 import { CallerIdentityToolsHandler } from './handlers/caller_identity_tools.handler';
+import { IdentityCheckToolsHandler } from './handlers/identity_check_tools.handler';
 import { ToolHandler } from './types/tool_context.type';
 import { ToolDefinition, ToolName } from './types/tool_definition.type';
 import { ToolFailure, ToolOutcome } from './types/tool_outcome.type';
@@ -27,8 +29,37 @@ interface ToolCallRecord {
   latency_ms: number;
 }
 
+const IDENTITY_LEVEL_REQUIRED = 'IDENTITY_LEVEL_REQUIRED';
+
+// The api's other identity gates, answered with what the model should do.
+const IDENTITY_GATE_MESSAGES: Record<string, string> = {
+  IDENTITY_LOCKED:
+    'Identity checks are locked on this call after failed attempts. Do not discuss any account. Say kindly that, for their security, a specialist will help, and stop.',
+  VERIFIED_CALLER_MISMATCH:
+    'The caller confirmed on this call is not the customer of that account. Do not discuss it. Confirm identity again with start_identity_check if the caller is someone else.',
+  CUSTOMER_NOT_VERIFIED_CALLER:
+    'That account belongs to someone other than the confirmed caller. Do not discuss it or act on it.',
+};
+
 function buildFailure(code: string, message: string): ToolFailure {
   return { ok: false, error: { code, message } };
+}
+
+// Written for the model: what to do next. Level 2 always follows level 1.
+function buildIdentityLevelMessage(
+  required_level: number,
+  current_level: number,
+): string {
+  const next_step =
+    required_level === 2 && current_level === 0
+      ? 'call start_identity_check with level 1, then with level 2'
+      : `call start_identity_check with level ${required_level}`;
+  return `Confirm identity to level ${required_level} first: ${next_step}.`;
+}
+
+function readLevel(raw_level: unknown, fallback_level: number): number {
+  const level = Number(raw_level);
+  return Number.isInteger(level) && level >= 0 ? level : fallback_level;
 }
 
 @Injectable()
@@ -41,6 +72,7 @@ export class CallToolsService {
     private readonly audit_events_repository: AuditEventsRepository,
     private readonly call_hold_service: CallHoldService,
     caller_identity_tools: CallerIdentityToolsHandler,
+    identity_check_tools: IdentityCheckToolsHandler,
     banking_lookup_tools: BankingLookupToolsHandler,
     action_tools: ActionToolsHandler,
     call_insight_tools: CallInsightToolsHandler,
@@ -48,8 +80,12 @@ export class CallToolsService {
     this.tool_handlers = {
       get_caller_context: (context) =>
         caller_identity_tools.getCallerContext(context),
-      send_identity_push: (context) =>
-        caller_identity_tools.sendIdentityPush(context),
+      start_identity_check: (context, args) =>
+        identity_check_tools.startIdentityCheck(context, args),
+      submit_identity_answers: (context, args) =>
+        identity_check_tools.submitIdentityAnswers(context, args),
+      send_app_identity_check: (context) =>
+        caller_identity_tools.sendAppIdentityCheck(context),
       get_customer_overview: (context) =>
         banking_lookup_tools.getCustomerOverview(context),
       get_recent_transactions: (context, args) =>
@@ -158,22 +194,46 @@ export class CallToolsService {
     call: CallRow,
     tool_definition: ToolDefinition,
   ): ToolFailure | null {
+    if (readIdentityLevel(call) < tool_definition.required_identity_level) {
+      return buildFailure(
+        IDENTITY_LEVEL_REQUIRED,
+        buildIdentityLevelMessage(
+          tool_definition.required_identity_level,
+          readIdentityLevel(call),
+        ),
+      );
+    }
     if (tool_definition.requires_matched_customer && !call.customer_id) {
       return buildFailure(
         'CALLER_NOT_MATCHED',
-        'This phone number is not linked to a customer, so account tools are not available. Offer to connect the caller with a person using request_human.',
-      );
-    }
-    if (tool_definition.requires_verified_identity && !call.identity_verified) {
-      return buildFailure(
-        'IDENTITY_NOT_VERIFIED',
-        'The caller is not verified yet. Call send_identity_push first.',
+        'This phone number is not on file, so the app check is not available. Confirm identity with start_identity_check instead.',
       );
     }
     return null;
   }
 
   private mapHandlerError(tool_name: string, error: unknown): ToolFailure {
+    if (
+      error instanceof EngineApiRejectedError &&
+      error.api_error_code === IDENTITY_LEVEL_REQUIRED
+    ) {
+      return buildFailure(
+        IDENTITY_LEVEL_REQUIRED,
+        buildIdentityLevelMessage(
+          readLevel(error.api_details.required_level, 1),
+          readLevel(error.api_details.current_level, 0),
+        ),
+      );
+    }
+    if (
+      error instanceof EngineApiRejectedError &&
+      error.api_error_code in IDENTITY_GATE_MESSAGES
+    ) {
+      return buildFailure(
+        error.api_error_code,
+        IDENTITY_GATE_MESSAGES[error.api_error_code],
+      );
+    }
     if (error instanceof EngineApiRejectedError) {
       return buildFailure(error.api_error_code, error.api_message);
     }

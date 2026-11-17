@@ -26,6 +26,11 @@ export class SoftSignalsArgsDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  fraud_signals?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   quotes?: string[];
 }
 

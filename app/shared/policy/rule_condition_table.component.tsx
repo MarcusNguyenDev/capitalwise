@@ -1,10 +1,9 @@
 import { Check, X } from "lucide-react";
 
-import { formatFactValue } from "@/shared/format/format_values.util";
 import type { EvaluatedCondition } from "@/shared/types/case.type";
 import { DataTable } from "@/shared/ui/data_table.component";
 
-import { describeFact, describeOperator } from "./describe_policy.util";
+import { describeActualValue, describeExpectation, describeFact } from "./describe_policy.util";
 
 function ConditionResult({ has_passed }: { has_passed: boolean }) {
   return has_passed ? (
@@ -36,9 +35,9 @@ export function RuleConditionTable({ conditions }: { conditions: EvaluatedCondit
           key: "expected",
           header: "Policy expects",
           class_name: "text-ink-soft",
-          renderCell: (condition) => `${describeOperator(condition.op)} ${formatFactValue(condition.expected)}`,
+          renderCell: (condition) => describeExpectation({ fact: condition.fact, op: condition.op, value: condition.expected }),
         },
-        { key: "actual", header: "Actual", class_name: "font-medium", renderCell: (condition) => formatFactValue(condition.actual) },
+        { key: "actual", header: "Actual", class_name: "font-medium", renderCell: (condition) => describeActualValue(condition.fact, condition.actual) },
         { key: "result", header: "Result", is_numeric: true, renderCell: (condition) => <ConditionResult has_passed={condition.passed} /> },
       ]}
     />

@@ -8,11 +8,16 @@ to download the app. The customer does all the work and the call is
 deflected, not resolved.
 
 **The product.** An AI phone specialist that answers straight away and
-resolves the call in natural conversation. No menus, no account number, no
-passkey: it recognises the caller ID and confirms identity with a push to the
-customer's banking app. Staff do not sit in a hold queue. They supervise many
-AI-handled conversations at once and can watch, whisper an instruction, take
-over, hand back, and approve or reject what the AI proposes.
+resolves the call in natural conversation, the way a good human banker would.
+No menus, no account number, no passkey, and no app needed: it asks who is
+calling, confirms identity in conversation with questions the server checks,
+and then does the job itself (blocks and replaces a lost card, refunds an
+eligible fee, lodges a dispute for a duplicate charge, sets up a payment
+arrangement). It works for a 90-year-old on a landline as well as for anyone
+else. Staff do not sit in a hold queue. They supervise many AI-handled
+conversations at once, step in when policy says a person is needed, and can
+watch, whisper an instruction, take over, hand back, and approve or reject
+what the AI proposes.
 
 1. **The AI proposes, deterministic policy decides, humans oversee.**
 2. **Resolve, don't deflect.** Asking for a human gets you a human, with full context.
@@ -20,9 +25,9 @@ over, hand back, and approve or reject what the AI proposes.
 
 | Tier | What happens | Example |
 | --- | --- | --- |
-| 1, auto | Low-risk, reversible actions run instantly | Temporary card lock |
-| 2, approve | The AI builds a case pack for the staff approval queue | Fee refund, hardship request |
-| 3, escalate | Scam, vulnerability or "I want a person" goes to a specialist. The AI never releases money | Held payment |
+| 1, auto | The AI completes it on the call: protective or customer-favourable, and checkable against the bank's data | Lock or replace a card, first small fee refund, duplicate-charge dispute, short payment arrangement, statements |
+| 2, approve | The AI builds a case pack for the staff approval queue | Large fee refund, hardship request (the law expects a person) |
+| 3, escalate | Fraud signs, vulnerability, failed identity, security-sensitive changes or "I want a person" go to a specialist. The AI never releases money | Held payment, address change, failed identity checks |
 
 ## Start
 
@@ -268,8 +273,23 @@ flowchart LR
 
 ## Security and safety
 
-- **No voice-only identity.** Caller ID plus an in-app push. Voices can be
-  cloned, so a voice is never proof of identity.
+- **Identity in conversation, checked by the server, stepped up for risk.**
+  The AI asks for name, date of birth and postcode (level 1), and one question
+  about the customer's own recent activity for anything riskier (level 2):
+  their last pay or pension amount, a recent card purchase, a loan repayment.
+  The server compares the answers with the bank's records; the AI never sees
+  the expected values and is never told which answer was wrong. Two failed
+  attempts lock the call and raise a fraud case. No app or smartphone is
+  needed; the in-app check is an optional extra for those who prefer it.
+- **Level 1 can only protect, never reveal.** After the basic check the AI can
+  lock or block a card and send a statement to the address on file, but sees
+  no balances, transactions, income or card digits, so it can never recite the
+  answers to the level-2 question. Caller ID is only a hint: the AI does not
+  greet anyone by name until they have been confirmed, because landlines are
+  shared.
+- **Security-sensitive changes always go to a person.** Address, phone or
+  email changes, new payees, transfers, limit increases and account closures
+  are how accounts are taken over, so policy always escalates them.
 - **Every tool call is validated server-side.** The model's claimed facts are
   never trusted: the customer is always the verified caller, card and account
   ids must belong to them, and amounts must match the database.

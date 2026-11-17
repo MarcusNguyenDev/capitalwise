@@ -10,6 +10,7 @@ import { ActionToolsHandler } from './handlers/action_tools.handler';
 import { BankingLookupToolsHandler } from './handlers/banking_lookup_tools.handler';
 import { CallInsightToolsHandler } from './handlers/call_insight_tools.handler';
 import { CallerIdentityToolsHandler } from './handlers/caller_identity_tools.handler';
+import { IdentityCheckToolsHandler } from './handlers/identity_check_tools.handler';
 import { IdentityPushWaiter } from './identity_push_waiter.service';
 import { NotificationStatusesRepository } from './notification_statuses.repository';
 
@@ -19,6 +20,7 @@ import { NotificationStatusesRepository } from './notification_statuses.reposito
   providers: [
     CallToolsService,
     CallerIdentityToolsHandler,
+    IdentityCheckToolsHandler,
     BankingLookupToolsHandler,
     ActionToolsHandler,
     CallInsightToolsHandler,

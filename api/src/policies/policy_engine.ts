@@ -99,6 +99,7 @@ function buildEvaluation(
     matched_rule_id: outcome.id,
     reason: outcome.reason,
     ...(outcome.proposal ? { proposal: outcome.proposal } : {}),
+    ...(outcome.skill ? { skill: outcome.skill } : {}),
     conditions_evaluated,
   };
 }
@@ -135,6 +136,7 @@ function explainOutcome(
     recommend: outcome.recommend,
     confidence: outcome.confidence,
     reason: outcome.reason,
+    ...(outcome.skill ? { skill: outcome.skill } : {}),
     conditions: explanation_flags.conditions,
   };
 }

@@ -12,6 +12,9 @@ interface ErrorResponseBody {
   status_code: number;
   error_code: string;
   message: string;
+  // Extra machine-readable fields an error class declares in error_details,
+  // for example { required_level, current_level }.
+  [detail_key: string]: unknown;
 }
 
 const FALLBACK_ERROR_CODES: Record<number, string> = {
@@ -38,7 +41,12 @@ export class HttpErrorFilter implements ExceptionFilter {
     const status_code = exception.getStatus();
     const declared_error_code = (exception as { error_code?: unknown })
       .error_code;
+    const declared_details = (exception as { error_details?: unknown })
+      .error_details;
     return {
+      ...(typeof declared_details === 'object' && declared_details !== null
+        ? declared_details
+        : {}),
       status_code,
       error_code:
         typeof declared_error_code === 'string'

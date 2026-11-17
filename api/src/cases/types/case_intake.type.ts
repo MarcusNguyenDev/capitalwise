@@ -12,6 +12,8 @@ export interface Caller {
 export interface CaseIntake {
   call: CallRecord;
   caller: Caller;
+  // From engine.identity_attempts at the time of the request.
+  identity_level: number;
   action_type: ActionType;
   params: Record<string, unknown>;
   summary: string;

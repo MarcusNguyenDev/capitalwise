@@ -1,5 +1,5 @@
 import type { ActionCode, PolicyDefinition, RiskClass } from "./case.type";
-import type { RiskLevel } from "./call.type";
+import type { IdentityLevel, RiskLevel } from "./call.type";
 
 export type StaffStatus = "AVAILABLE" | "BUSY" | "ON_BREAK" | "OFFLINE";
 export type StaffRole = "FRONTLINE" | "HARDSHIP_SPECIALIST" | "FRAUD_SPECIALIST" | "TEAM_LEADER";
@@ -73,6 +73,8 @@ export interface RegisteredAction {
   reversible: boolean;
   required_evidence: string[];
   required_skill: string | null;
+  /** The identity level the caller must reach before the AI may propose this action. */
+  required_identity_level?: IdentityLevel;
   active_policy: Policy | null;
   policy_history: Policy[];
 }
@@ -108,7 +110,10 @@ export interface AutonomyProposal {
   status: "PENDING_SIGN_OFF" | "SIGNED_OFF" | "DECLINED";
   created_at: string;
   signed_off_by: string | null;
+  signed_off_by_name?: string | null;
   signed_off_at: string | null;
+  /** Set once a policy owner published the policy version that carries the promotion. */
+  published_policy_id?: string | null;
 }
 
 export interface AutonomyOverview {
@@ -186,6 +191,13 @@ export interface Caller {
   age: number;
 }
 
+/** How the customer likes to hear from the bank; the AI can change these on the call. */
+export interface CustomerPreferences {
+  paper_statements: boolean;
+  sms_alerts: boolean;
+  large_print_letters: boolean;
+}
+
 export interface CustomerOverview {
   customer_id: string;
   first_name: string;
@@ -213,6 +225,7 @@ export interface CustomerOverview {
     daily_transfer_limit: number;
   }[];
   cards: { card_id: string; account_id: string; card_type: string; last4: string; status: string }[];
+  preferences?: CustomerPreferences | null;
   recent_contacts: { contact_id: string; created_at: string; channel: string; event_type: string; summary: string }[];
   devices: { device_id: string; device_name: string; platform: string; first_seen_at: string; is_trusted: boolean }[];
 }

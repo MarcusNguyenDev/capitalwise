@@ -1,6 +1,7 @@
 import { HeartHandshake } from "lucide-react";
 
-import { formatCodeLabel, formatCurrency } from "@/shared/format/format_values.util";
+import { formatCurrency } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import { RecommendationBadge } from "@/shared/status/recommendation_badge.component";
 import type { EngineCase } from "@/shared/types/case.type";
 import { QueueItem } from "@/shared/ui/queue_item.component";
@@ -35,7 +36,7 @@ export function ApprovalListItem({ queued_case, is_selected, is_highlighted, cur
         <SlaCountdown sla_due_at={queued_case.sla_due_at} current_time_ms={current_time_ms} />
       </span>
       <span className="block truncate text-sm text-ink-soft">
-        {formatCodeLabel(queued_case.action_code)}
+        {formatActionLabel(queued_case.action_code)}
         {case_amount === null ? "" : ` · ${formatCurrency(case_amount)}`}
         {queued_case.assigned_staff_name ? ` · ${queued_case.assigned_staff_name}` : ""}
       </span>

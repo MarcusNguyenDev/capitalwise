@@ -11,6 +11,7 @@ import {
 } from './constants/agent_phrases.constant';
 import { AgentRoom, AgentRoomListeners } from './types/agent_room.type';
 import { VoiceAgentSession } from './voice_agent.session';
+import { MAX_TOOL_ROUNDS } from './constants/voice_agent_timing.constant';
 
 const CALL_ID = '0b0f7c0e-5d3a-4f6e-9a55-3a3f3a3f3a3f';
 const SYSTEM_PROMPT = 'You are the AI phone specialist for Demo Bank.';
@@ -194,7 +195,13 @@ function buildHarness(
     if (tool_name === 'get_caller_context') {
       return {
         ok: true as const,
-        result: { matched: true, first_name: 'Sarah' },
+        result: { is_known_number: true },
+      };
+    }
+    if (tool_name === 'submit_identity_answers') {
+      return {
+        ok: true as const,
+        result: { is_passed: true, identity_level: 1, first_name: 'Sarah' },
       };
     }
     return { ok: true as const, result: { tool_name } };
@@ -273,6 +280,7 @@ function buildHarness(
     call_id: CALL_ID,
     settings: {
       bank_name: 'Demo Bank',
+      bank_time_zone: 'Australia/Brisbane',
       system_prompt: SYSTEM_PROMPT,
       tools: [
         {
@@ -358,8 +366,12 @@ function buildHarness(
       true,
     );
     await waitFor(
-      () => recorded_turns.length >= 2,
-      'the greeting and opening reply',
+      () =>
+        recorded_turns.length >= 1 &&
+        dispatchTool.mock.calls.some(
+          (call) => call[1] === 'get_caller_context',
+        ),
+      'the greeting and the caller context',
     );
     await session.waitUntilSettled();
   };
@@ -399,68 +411,148 @@ describe('VoiceAgentSession', () => {
     await harness?.session.stop('test finished');
   });
 
-  it('opens with the fixed greeting, runs get_caller_context and lets the model greet by name', async () => {
+  it('opens with the fixed greeting that asks for the full name, then waits for the caller', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah, how can I help today?'));
 
     await harness.joinAndWaitForGreeting();
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
+    expect(buildGreeting('Demo Bank')).toBe(
+      "Hello, thanks for calling Demo Bank. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?",
+    );
     expect(harness.played_phrases[0]).toBe(buildGreeting('Demo Bank'));
     expect(harness.dispatchTool).toHaveBeenCalledWith(
       CALL_ID,
       'get_caller_context',
       {},
     );
+    // The greeting asked a question: the model says nothing until the caller answers.
     expect(harness.recorded_turns).toEqual([
       {
         speaker: 'AI',
         text: buildGreeting('Demo Bank'),
         latency_ms: undefined,
       },
-      {
-        speaker: 'AI',
-        text: 'Hi Sarah, how can I help today?',
-        latency_ms: undefined,
-      },
     ]);
-    const opening_messages = harness.chat_requests[0].messages;
-    expect(opening_messages[0]).toEqual({
+    expect(harness.chat_requests).toHaveLength(0);
+    expect(harness.hold_events).toEqual([]);
+  });
+
+  it("answers the caller's name with the opening context, and no name is known to the model before level 1", async () => {
+    harness = buildHarness();
+    harness.scripted_replies.push(
+      textReply('Thank you. How can I help you today?'),
+    );
+    await harness.joinAndWaitForGreeting();
+
+    harness.sayToAgent("It's Sarah Mitchell.");
+    await waitFor(() => harness.recorded_turns.length >= 3, 'the reply');
+    await harness.session.waitUntilSettled();
+
+    const first_messages = harness.chat_requests[0].messages;
+    expect(first_messages[0]).toEqual({
       role: 'system',
       content: SYSTEM_PROMPT,
     });
-    expect(opening_messages[1]).toMatchObject({
+    expect(first_messages[1]).toMatchObject({
       role: 'assistant',
+      content: buildGreeting('Demo Bank'),
       tool_calls: [{ name: 'get_caller_context' }],
     });
-    expect(opening_messages[2]).toMatchObject({
+    expect(first_messages[2]).toMatchObject({
       role: 'tool',
       name: 'get_caller_context',
+      content: JSON.stringify({ ok: true, result: { is_known_number: true } }),
     });
+    expect(first_messages[3]).toEqual({
+      role: 'user',
+      content: "It's Sarah Mitchell.",
+    });
+    // Nothing the system gave the model names the caller: only they did.
+    const system_given_messages = first_messages.filter(
+      (chat_message) => chat_message.role !== 'user',
+    );
+    expect(JSON.stringify(system_given_messages)).not.toContain('Sarah');
     expect(harness.chat_requests[0].tools).toHaveLength(1);
+  });
+
+  it('runs identity tools silently: no hold line, no hold state, and learns the first name from a passed check', async () => {
+    harness = buildHarness({ tool_delay_ms: 120 });
+    harness.scripted_replies.push(
+      toolReply('start_identity_check', { level: 1 }),
+      textReply("What's your date of birth?"),
+      toolReply('submit_identity_answers', {
+        challenge_id: 'IDC-000001',
+        answers: [{ question_id: 'Q2', answer: '14th of September 1992' }],
+      }),
+      textReply("Thanks, Sarah, that's all confirmed."),
+    );
+    await harness.joinAndWaitForGreeting();
+
+    harness.sayToAgent("It's Sarah Mitchell, I've lost my card.");
+    await waitFor(
+      () =>
+        harness.recorded_turns.some(
+          (turn) => turn.text === "What's your date of birth?",
+        ),
+      'the first identity question',
+    );
+    harness.sayToAgent('Fourteenth of September 1992.');
+    await waitFor(
+      () =>
+        harness.recorded_turns.some((turn) =>
+          turn.text.startsWith('Thanks, Sarah'),
+        ),
+      'the confirmation',
+    );
+    await harness.session.waitUntilSettled();
+
+    expect(harness.hold_events).toEqual([]);
+    const ai_texts = harness.recorded_turns
+      .filter((turn) => turn.speaker === 'AI')
+      .map((turn) => turn.text);
+    expect(ai_texts).toEqual([
+      buildGreeting('Demo Bank'),
+      "What's your date of birth?",
+      "Thanks, Sarah, that's all confirmed.",
+    ]);
+    expect(harness.played_phrases).not.toContain(
+      HOLD_PHRASES.CHECKING_SYSTEM_ACKNOWLEDGEMENT,
+    );
+    // The first name reaches the model only in the passed check's result.
+    const tool_results = harness.chat_requests
+      .at(-1)
+      ?.messages.filter((chat_message) => chat_message.role === 'tool');
+    expect(tool_results?.at(-1)).toMatchObject({
+      name: 'submit_identity_answers',
+      content: JSON.stringify({
+        ok: true,
+        result: { is_passed: true, identity_level: 1, first_name: 'Sarah' },
+      }),
+    });
   });
 
   it('answers a customer turn: transcript, model reply spoken, latency recorded', async () => {
     harness = buildHarness();
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
       textReply('I can help with that. Let me see.'),
     );
     await harness.joinAndWaitForGreeting();
 
     harness.sayToAgent('I think I lost my debit card.');
-    await waitFor(() => harness.recorded_turns.length >= 4, 'the reply');
+    await waitFor(() => harness.recorded_turns.length >= 3, 'the reply');
     await harness.session.waitUntilSettled();
 
-    expect(harness.recorded_turns[2]).toEqual({
+    expect(harness.recorded_turns[1]).toEqual({
       speaker: 'CUSTOMER',
       text: 'I think I lost my debit card.',
     });
-    expect(harness.recorded_turns[3]).toMatchObject({
+    expect(harness.recorded_turns[2]).toMatchObject({
       speaker: 'AI',
       text: 'I can help with that. Let me see.',
       latency_ms: expect.any(Number),
     });
-    expect(harness.chat_requests[1].messages.at(-1)).toEqual({
+    expect(harness.chat_requests[0].messages.at(-1)).toEqual({
       role: 'user',
       content: 'I think I lost my debit card.',
     });
@@ -474,7 +566,6 @@ describe('VoiceAgentSession', () => {
   it('runs a tool round on hold: acknowledgement, reminders, thanks, then the answer', async () => {
     harness = buildHarness({ tool_delay_ms: 150 });
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
       toolReply('get_customer_overview'),
       textReply('I can see your debit card ending in four eight two one.'),
     );
@@ -499,7 +590,6 @@ describe('VoiceAgentSession', () => {
       .map((turn) => turn.text);
     expect(ai_texts).toEqual([
       buildGreeting('Demo Bank'),
-      'Hi Sarah.',
       HOLD_PHRASES.CHECKING_SYSTEM_ACKNOWLEDGEMENT,
       HOLD_PHRASES.RETURN_FROM_HOLD,
       'I can see your debit card ending in four eight two one.',
@@ -513,7 +603,7 @@ describe('VoiceAgentSession', () => {
     expect(harness.played_phrases).toContain(
       HOLD_PHRASES.CHECKING_SYSTEM_REMINDER,
     );
-    const follow_up_messages = harness.chat_requests[2].messages;
+    const follow_up_messages = harness.chat_requests[1].messages;
     expect(follow_up_messages.at(-1)).toMatchObject({
       role: 'tool',
       name: 'get_customer_overview',
@@ -524,11 +614,10 @@ describe('VoiceAgentSession', () => {
     });
   });
 
-  it('uses the app-approval line for the identity push and skips the thanks after a short hold', async () => {
+  it('uses the app-approval line for the optional app check and skips the thanks after a short hold', async () => {
     harness = buildHarness();
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
-      toolReply('send_identity_push'),
+      toolReply('send_app_identity_check'),
       textReply('Thanks, you are verified.'),
     );
     await harness.joinAndWaitForGreeting();
@@ -543,7 +632,7 @@ describe('VoiceAgentSession', () => {
     );
 
     expect(harness.hold_events[0]).toBe(
-      'start:WAITING_FOR_APP_APPROVAL:send_identity_push',
+      'start:WAITING_FOR_APP_APPROVAL:send_app_identity_check',
     );
     const ai_texts = harness.recorded_turns.map((turn) => turn.text);
     expect(ai_texts).toContain(HOLD_PHRASES.APP_APPROVAL_ACKNOWLEDGEMENT);
@@ -553,7 +642,6 @@ describe('VoiceAgentSession', () => {
   it('stops talking and aborts the model when the caller barges in', async () => {
     harness = buildHarness();
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
       {
         events: [
           {
@@ -569,7 +657,7 @@ describe('VoiceAgentSession', () => {
 
     harness.sayToAgent('I need help with a card.');
     await waitFor(
-      () => harness.synthesized.length >= 2,
+      () => harness.synthesized.length >= 1,
       'the first sentence to be spoken',
     );
     harness.sayToAgent('Sorry, it is my credit card.');
@@ -581,17 +669,16 @@ describe('VoiceAgentSession', () => {
       'the reply after the barge-in',
     );
 
-    const aborted_request = harness.chat_requests[1];
+    const aborted_request = harness.chat_requests[0];
     expect(aborted_request.abort_signal?.aborted).toBe(true);
     expect(harness.recorded_turns.map((turn) => turn.text)).toEqual([
       buildGreeting('Demo Bank'),
-      'Hi Sarah.',
       'I need help with a card.',
       'There are a few things we can do here. …',
       'Sorry, it is my credit card.',
       'Of course, your credit card.',
     ]);
-    expect(harness.chat_requests[2].messages.slice(-2)).toEqual([
+    expect(harness.chat_requests[1].messages.slice(-2)).toEqual([
       {
         role: 'assistant',
         content: 'There are a few things we can do here. …',
@@ -602,7 +689,6 @@ describe('VoiceAgentSession', () => {
 
   it('goes silent on TAKEOVER, speaks staff messages in the staff voice and resumes on HANDBACK', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
     await harness.joinAndWaitForGreeting();
 
     harness.session.handleCommand({
@@ -688,7 +774,6 @@ describe('VoiceAgentSession', () => {
   it('applies a supervisor instruction at once when idle and marks it applied', async () => {
     harness = buildHarness();
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
       textReply('The National Debt Helpline is on 1800 007 007.'),
     );
     await harness.joinAndWaitForGreeting();
@@ -711,7 +796,7 @@ describe('VoiceAgentSession', () => {
       CALL_ID,
       'INT-3',
     );
-    expect(harness.chat_requests[1].messages.at(-1)).toEqual({
+    expect(harness.chat_requests[0].messages.at(-1)).toEqual({
       role: 'system',
       content: 'Supervisor instruction: Mention the National Debt Helpline',
     });
@@ -719,7 +804,7 @@ describe('VoiceAgentSession', () => {
 
   it('apologises and asks for a person once when a provider fails', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'), {
+    harness.scripted_replies.push({
       events: [],
       error: new AiProviderRequestFailedError('ollama', 'HTTP 500'),
     });
@@ -746,15 +831,12 @@ describe('VoiceAgentSession', () => {
     );
   });
 
-  it('gives a fallback line after four tool rounds in one turn', async () => {
+  it('gives a fallback line after MAX_TOOL_ROUNDS tool rounds in one turn', async () => {
     harness = buildHarness();
     harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
-      toolReply('update_call_insight'),
-      toolReply('update_call_insight'),
-      toolReply('update_call_insight'),
-      toolReply('update_call_insight'),
-      toolReply('update_call_insight'),
+      ...Array.from({ length: MAX_TOOL_ROUNDS + 1 }, () =>
+        toolReply('update_call_insight'),
+      ),
     );
     await harness.joinAndWaitForGreeting();
 
@@ -770,12 +852,11 @@ describe('VoiceAgentSession', () => {
     const insight_calls = harness.dispatchTool.mock.calls.filter(
       (call) => call[1] === 'update_call_insight',
     );
-    expect(insight_calls).toHaveLength(4);
+    expect(insight_calls).toHaveLength(MAX_TOOL_ROUNDS);
   });
 
   it('stops everything on END_CALL and ignores the caller afterwards', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
     await harness.joinAndWaitForGreeting();
 
     harness.session.handleCommand({
@@ -820,7 +901,6 @@ describe('VoiceAgentSession', () => {
   });
   it('warms the model prompt cache with the system prompt and tools as soon as it joins', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
 
     await harness.joinAndWaitForGreeting();
 
@@ -831,11 +911,13 @@ describe('VoiceAgentSession', () => {
     expect(harness.warm_up_requests[0].tools).toHaveLength(1);
   });
 
-  it('sends the opening round in the exact shape the providers expect', async () => {
+  it('sends the first round in the exact shape the providers expect', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
-
     await harness.joinAndWaitForGreeting();
+
+    harness.sayToAgent('Sarah Mitchell.');
+    await waitFor(() => harness.chat_requests.length >= 1, 'the first round');
+    await harness.session.waitUntilSettled();
 
     expect(harness.chat_requests[0].messages).toEqual([
       { role: 'system', content: SYSTEM_PROMPT },
@@ -856,15 +938,15 @@ describe('VoiceAgentSession', () => {
         name: 'get_caller_context',
         content: JSON.stringify({
           ok: true,
-          result: { matched: true, first_name: 'Sarah' },
+          result: { is_known_number: true },
         }),
       },
+      { role: 'user', content: 'Sarah Mitchell.' },
     ]);
   });
 
   it('survives a stuck speech-to-text: one apology, one request for a person, no pile-up', async () => {
     harness = buildHarness({ is_transcription_failing: true });
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
     await harness.joinAndWaitForGreeting();
 
     for (const looping_line of ['one', 'two', 'three', 'four', 'five']) {
@@ -895,7 +977,7 @@ describe('VoiceAgentSession', () => {
 
   it("streams the caller's speech to speech-to-text and commits at the end of the turn", async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'), textReply('Sure.'));
+    harness.scripted_replies.push(textReply('Sure.'));
     await harness.joinAndWaitForGreeting();
 
     harness.sayToAgent('I lost my card.', 600);
@@ -919,7 +1001,6 @@ describe('VoiceAgentSession', () => {
 
   it('clears a false start instead of committing it', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
     await harness.joinAndWaitForGreeting();
 
     harness.sayToAgent('unused', 250);
@@ -931,10 +1012,7 @@ describe('VoiceAgentSession', () => {
 
   it('records the text it asked for, counts voice drift and records realtime voice usage', async () => {
     harness = buildHarness();
-    harness.scripted_replies.push(
-      textReply('Hi Sarah.'),
-      textReply('Your DRIFTWORD card is locked.'),
-    );
+    harness.scripted_replies.push(textReply('Your DRIFTWORD card is locked.'));
     await harness.joinAndWaitForGreeting();
 
     harness.sayToAgent('Lock it please.');
@@ -958,11 +1036,15 @@ describe('VoiceAgentSession', () => {
     );
   });
 
-  it('starts the opening reply only after the prompt warm-up finished', async () => {
+  it('starts the first reply only after the prompt warm-up finished', async () => {
     harness = buildHarness({ warm_up_delay_ms: 120 });
-    harness.scripted_replies.push(textReply('Hi Sarah.'));
+    await harness.session.start();
+    (
+      harness.agent_room.listeners as AgentRoomListeners
+    ).onCustomerPresenceChanged(true);
+    harness.session.acceptTypedCustomerMessage('Sarah Mitchell.');
 
-    await harness.joinAndWaitForGreeting();
+    await waitFor(() => harness.chat_requests.length >= 1, 'the first reply');
 
     expect(harness.readWarmUpFinishedAtMs()).toBeGreaterThan(0);
     expect(harness.chat_requested_at_ms[0]).toBeGreaterThanOrEqual(
@@ -974,7 +1056,6 @@ describe('VoiceAgentSession', () => {
     it('answers a typed line like a transcribed turn, without speech-to-text', async () => {
       harness = buildHarness();
       harness.scripted_replies.push(
-        textReply('Hi Sarah.'),
         textReply('I can see two charges from Northshore Electronics.'),
       );
       await harness.joinAndWaitForGreeting();
@@ -982,20 +1063,20 @@ describe('VoiceAgentSession', () => {
       const is_accepted = harness.session.acceptTypedCustomerMessage(
         'I was charged twice yesterday.',
       );
-      await waitFor(() => harness.recorded_turns.length >= 4, 'the reply');
+      await waitFor(() => harness.recorded_turns.length >= 3, 'the reply');
       await harness.session.waitUntilSettled();
 
       expect(is_accepted).toBe(true);
-      expect(harness.recorded_turns[2]).toEqual({
+      expect(harness.recorded_turns[1]).toEqual({
         speaker: 'CUSTOMER',
         text: 'I was charged twice yesterday.',
       });
-      expect(harness.recorded_turns[3]).toMatchObject({
+      expect(harness.recorded_turns[2]).toMatchObject({
         speaker: 'AI',
         text: 'I can see two charges from Northshore Electronics.',
         latency_ms: expect.any(Number),
       });
-      expect(harness.chat_requests[1].messages.at(-1)).toEqual({
+      expect(harness.chat_requests[0].messages.at(-1)).toEqual({
         role: 'user',
         content: 'I was charged twice yesterday.',
       });
@@ -1009,7 +1090,6 @@ describe('VoiceAgentSession', () => {
     it('interrupts the AI when the caller types while it is speaking', async () => {
       harness = buildHarness();
       harness.scripted_replies.push(
-        textReply('Hi Sarah.'),
         {
           events: [
             {
@@ -1025,7 +1105,7 @@ describe('VoiceAgentSession', () => {
 
       harness.sayToAgent('I need help with a card.');
       await waitFor(
-        () => harness.synthesized.length >= 2,
+        () => harness.synthesized.length >= 1,
         'the first sentence to be spoken',
       );
       harness.session.acceptTypedCustomerMessage('It is my credit card.');
@@ -1037,10 +1117,9 @@ describe('VoiceAgentSession', () => {
         'the reply after the typed line',
       );
 
-      expect(harness.chat_requests[1].abort_signal?.aborted).toBe(true);
+      expect(harness.chat_requests[0].abort_signal?.aborted).toBe(true);
       expect(harness.recorded_turns.map((turn) => turn.text)).toEqual([
         buildGreeting('Demo Bank'),
-        'Hi Sarah.',
         'I need help with a card.',
         'There are a few things we can do here. …',
         'It is my credit card.',
@@ -1050,7 +1129,6 @@ describe('VoiceAgentSession', () => {
 
     it('records a typed line while a person has the call, without the AI answering', async () => {
       harness = buildHarness();
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
       harness.session.handleCommand({
         command: 'TAKEOVER',
@@ -1083,8 +1161,9 @@ describe('VoiceAgentSession', () => {
         max_call_cost_usd: 0.5,
         estimated_cost_usd: 0.75,
       });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
+      // The first model reply records usage past the budget.
+      harness.session.acceptTypedCustomerMessage('Sarah Mitchell.');
       await waitFor(
         () =>
           harness.dispatchTool.mock.calls.some(
@@ -1106,7 +1185,6 @@ describe('VoiceAgentSession', () => {
 
     it('keeps a typing caller from the idle hang-up', async () => {
       harness = buildHarness({ idle_hangup_ms: 1_200 });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
 
       // Silent, this caller would be hung up on within about 2.2 s.
@@ -1146,8 +1224,9 @@ describe('VoiceAgentSession', () => {
         max_call_cost_usd: 0.5,
         estimated_cost_usd: 0.75,
       });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
+      // The first model reply records usage past the budget.
+      harness.session.acceptTypedCustomerMessage('Sarah Mitchell.');
       await waitFor(
         () =>
           harness.dispatchTool.mock.calls.some(
@@ -1173,7 +1252,6 @@ describe('VoiceAgentSession', () => {
 
     it('says goodbye and ends the call at the time limit', async () => {
       harness = buildHarness({ max_call_ms: 300 });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
 
       await waitFor(
@@ -1192,7 +1270,6 @@ describe('VoiceAgentSession', () => {
 
     it('says goodbye and ends the call when the caller stays silent', async () => {
       harness = buildHarness({ idle_hangup_ms: 1_500 });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
 
       await waitFor(
@@ -1207,7 +1284,6 @@ describe('VoiceAgentSession', () => {
 
     it('never hangs up on a silent caller while a person has the call', async () => {
       harness = buildHarness({ idle_hangup_ms: 1_200 });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
 
       harness.session.handleCommand({
@@ -1223,7 +1299,6 @@ describe('VoiceAgentSession', () => {
 
     it('sends no warm-up request when the chat API is paid', async () => {
       harness = buildHarness({ is_warm_up_enabled: false });
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
 
       await harness.joinAndWaitForGreeting();
 
@@ -1232,8 +1307,12 @@ describe('VoiceAgentSession', () => {
 
     it('keeps speech sessions per call and releases them when the call ends', async () => {
       harness = buildHarness();
-      harness.scripted_replies.push(textReply('Hi Sarah.'));
       await harness.joinAndWaitForGreeting();
+      harness.sayToAgent('Sarah Mitchell.');
+      await waitFor(
+        () => harness.synthesizeStream.mock.calls.length > 0,
+        'the first spoken reply',
+      );
 
       await harness.session.stop('test');
 

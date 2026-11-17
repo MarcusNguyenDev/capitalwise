@@ -4,11 +4,11 @@ import { FileSearch } from "lucide-react";
 import { useState } from "react";
 
 import { fetchCases, fetchDecisionExplanation } from "@/shared/api_client/engine_api.client";
-import { formatCodeLabel } from "@/shared/format/format_values.util";
 import { useListNavigation } from "@/shared/keyboard/use_list_navigation.hook";
 import { CASE_EVENTS } from "@/shared/live/live_event_names.constant";
 import { useLiveQuery } from "@/shared/live/use_live_query.hook";
 import { useQueryParam } from "@/shared/navigation/use_query_param.hook";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import type { EngineCase } from "@/shared/types/case.type";
 import { EmptyState } from "@/shared/ui/empty_state.component";
 import { ErrorState } from "@/shared/ui/error_state.component";
@@ -23,7 +23,7 @@ import { DecisionTrace } from "./decision_trace.component";
 const DECISION_LIST_ELEMENT_ID = "decision_case_list";
 
 function matchesSearch(engine_case: EngineCase, search_text: string): boolean {
-  const searchable_text = `${engine_case.case_number} ${engine_case.customer_name} ${formatCodeLabel(engine_case.action_code)} ${engine_case.matched_rule_id}`;
+  const searchable_text = `${engine_case.case_number} ${engine_case.customer_name} ${formatActionLabel(engine_case.action_code)} ${engine_case.matched_rule_id}`;
   return searchable_text.toLowerCase().includes(search_text.trim().toLowerCase());
 }
 

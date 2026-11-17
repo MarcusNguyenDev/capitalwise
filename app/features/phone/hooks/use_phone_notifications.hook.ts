@@ -29,7 +29,7 @@ export interface PhoneNotifications {
   dismissBanner: (notification_id: string) => void;
 }
 
-/** Push and SMS notifications for the customer whose phone this is. Newest first. */
+/** Push, SMS and letter notifications for the customer whose phone this is. Newest first. */
 export function usePhoneNotifications(customer_id: string | null): PhoneNotifications {
   const [loaded_notifications, setLoadedNotifications] = useState<{ customer_id: string; notifications: CustomerNotification[] } | null>(null);
   const [banner_ids, setBannerIds] = useState<string[]>([]);
@@ -68,7 +68,8 @@ export function usePhoneNotifications(customer_id: string | null): PhoneNotifica
       customer_id,
       notifications: upsertNotification(current?.customer_id === customer_id ? current.notifications : [], notification),
     }));
-    if (event_name === LIVE_EVENT.NOTIFICATION_CREATED) {
+    // A letter is posted, so it lands in the history without popping up on the screen.
+    if (event_name === LIVE_EVENT.NOTIFICATION_CREATED && notification.channel !== "LETTER") {
       setBannerIds((current_ids) => [notification.notification_id, ...current_ids.filter((banner_id) => banner_id !== notification.notification_id)]);
       if (notification.kind !== "IDENTITY_CHECK") {
         setTimeout(() => dismissBanner(notification.notification_id), SMS_BANNER_VISIBLE_MS);

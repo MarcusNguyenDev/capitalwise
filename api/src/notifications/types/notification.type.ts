@@ -15,7 +15,8 @@ export interface NewNotification {
   customer_id: string;
   call_id: string | null;
   case_number: string | null;
-  channel: 'APP_PUSH' | 'SMS';
+  // LETTER: the customer has turned SMS alerts off.
+  channel: 'APP_PUSH' | 'SMS' | 'LETTER';
   kind: 'IDENTITY_CHECK' | 'CASE_UPDATE';
   body: string;
 }
@@ -27,6 +28,8 @@ export interface CaseMessageContext {
   customer_id: string;
   action_code: string;
   tier: number;
+  // The case status at the time of the message (AUTO_DECLINED, ...).
+  status?: string;
   facts: Record<string, unknown>;
   params: Record<string, unknown>;
   response_due_on: string | null;

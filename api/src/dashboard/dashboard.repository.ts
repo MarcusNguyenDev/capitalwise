@@ -36,7 +36,8 @@ export class DashboardRepository {
               each_case.tier, each_case.route_reason AS reason,
               CASE
                 WHEN jsonb_array_length(COALESCE(each_case.soft_signals -> 'scam_coaching_signals', '[]'::jsonb))
-                   + jsonb_array_length(COALESCE(each_case.soft_signals -> 'vulnerability_signals', '[]'::jsonb)) > 0
+                   + jsonb_array_length(COALESCE(each_case.soft_signals -> 'vulnerability_signals', '[]'::jsonb))
+                   + jsonb_array_length(COALESCE(each_case.soft_signals -> 'fraud_signals', '[]'::jsonb)) > 0
                   THEN 'HIGH'
                 ELSE COALESCE(call.risk_level, 'MEDIUM')
               END AS risk_level,

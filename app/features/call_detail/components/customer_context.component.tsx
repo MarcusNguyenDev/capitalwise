@@ -6,12 +6,34 @@ import { fetchCustomerOverview } from "@/shared/api_client/engine_api.client";
 import { formatCodeLabel, formatCurrency, formatDateTime } from "@/shared/format/format_values.util";
 import { useLiveQuery } from "@/shared/live/use_live_query.hook";
 import { CareFlagBadge } from "@/shared/status/care_flag_badge.component";
+import type { CustomerPreferences } from "@/shared/types/resources.type";
 import { Badge } from "@/shared/ui/badge.component";
 import { ErrorState } from "@/shared/ui/error_state.component";
 import { SkeletonDetail } from "@/shared/ui/skeleton.component";
 
 const NO_REFRESH_EVENTS: readonly string[] = [];
 const RECENT_CONTACT_LIMIT = 3;
+
+const PREFERENCE_LABELS: Record<keyof CustomerPreferences, string> = {
+  sms_alerts: "SMS alerts",
+  paper_statements: "Paper statements",
+  large_print_letters: "Large-print letters",
+};
+
+function ContactPreferences({ preferences }: { preferences: CustomerPreferences }) {
+  const preference_keys = Object.keys(PREFERENCE_LABELS) as (keyof CustomerPreferences)[];
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {preference_keys.map((preference_key) => (
+        <li key={preference_key}>
+          <Badge tone={preferences[preference_key] ? "positive" : "neutral"}>
+            {PREFERENCE_LABELS[preference_key]}: {preferences[preference_key] ? "on" : "off"}
+          </Badge>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function ContextSection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -77,6 +99,11 @@ export function CustomerContext({ customer_id }: { customer_id: string }) {
               </li>
             ))}
           </ul>
+        </ContextSection>
+      ) : null}
+      {overview.preferences ? (
+        <ContextSection title="How they hear from us">
+          <ContactPreferences preferences={overview.preferences} />
         </ContextSection>
       ) : null}
       <ContextSection title="Recent contact">

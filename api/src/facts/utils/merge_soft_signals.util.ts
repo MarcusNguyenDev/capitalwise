@@ -21,6 +21,7 @@ export function normaliseSoftSignals(
     scam_coaching_signals: toUniqueStrings(
       raw_soft_signals?.scam_coaching_signals,
     ),
+    fraud_signals: toUniqueStrings(raw_soft_signals?.fraud_signals),
     quotes: toUniqueStrings(raw_soft_signals?.quotes),
   };
 }
@@ -40,6 +41,7 @@ export function mergeSoftSignals(
       ...existing.scam_coaching_signals,
       ...added.scam_coaching_signals,
     ],
+    fraud_signals: [...existing.fraud_signals, ...added.fraud_signals],
     quotes: [...existing.quotes, ...added.quotes],
   });
 }

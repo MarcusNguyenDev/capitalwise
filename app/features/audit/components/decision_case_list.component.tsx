@@ -2,7 +2,8 @@
 
 import { Search } from "lucide-react";
 
-import { formatCodeLabel, formatDateTime } from "@/shared/format/format_values.util";
+import { formatDateTime } from "@/shared/format/format_values.util";
+import { formatActionLabel } from "@/shared/status/format_action_label.util";
 import { CASE_STATUS_LABELS } from "@/shared/status/status_wording.constant";
 import type { EngineCase } from "@/shared/types/case.type";
 import { EmptyState } from "@/shared/ui/empty_state.component";
@@ -51,7 +52,7 @@ export function DecisionCaseList({ cases, list_element_id, search_text, selected
                 <span className="shrink-0 text-xs tabular-nums text-ink-faint">{formatDateTime(engine_case.created_at)}</span>
               </span>
               <span className="block truncate text-sm text-ink-soft">
-                {formatCodeLabel(engine_case.action_code)} · {CASE_STATUS_LABELS[engine_case.status] ?? engine_case.status}
+                {formatActionLabel(engine_case.action_code)} · {CASE_STATUS_LABELS[engine_case.status] ?? engine_case.status}
               </span>
               <span className="block text-xs text-ink-faint">
                 Tier {engine_case.tier} · rule <span className="font-mono">{engine_case.matched_rule_id}</span> · {engine_case.case_number}

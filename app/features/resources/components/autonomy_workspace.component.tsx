@@ -16,6 +16,7 @@ import { useToast } from "@/shared/ui/toast.provider";
 
 import { TEAM_LEADER_ROLE } from "../constants/resources_view.constant";
 import { AutonomyHeadlineCard } from "./autonomy_headline_card.component";
+import { AutonomyPromotionCard } from "./autonomy_promotion_card.component";
 import { AutonomyProposalList } from "./autonomy_proposal_list.component";
 import { AutonomyStatsTable } from "./autonomy_stats_table.component";
 
@@ -55,6 +56,9 @@ export function AutonomyWorkspace() {
     }
   };
 
+  const findPublishedPromotion = (action_code: ActionCode) =>
+    (autonomy_overview?.proposals ?? []).find((proposal) => proposal.action_code === action_code && proposal.status === "SIGNED_OFF" && proposal.published_policy_id);
+
   const hasOpenProposal = (action_code: ActionCode) =>
     (autonomy_overview?.proposals ?? []).some((proposal) => proposal.action_code === action_code && proposal.status === "PENDING_SIGN_OFF");
 
@@ -68,15 +72,20 @@ export function AutonomyWorkspace() {
           <>
             {autonomy_overview.stats
               .filter((autonomy_stat) => autonomy_stat.is_eligible)
-              .map((autonomy_stat) => (
-                <AutonomyHeadlineCard
-                  key={autonomy_stat.action_code}
-                  autonomy_stat={autonomy_stat}
-                  has_open_proposal={hasOpenProposal(autonomy_stat.action_code)}
-                  is_proposing={is_proposing}
-                  onPropose={(action_code) => void proposePromotion(action_code)}
-                />
-              ))}
+              .map((autonomy_stat) => {
+                const published_promotion = findPublishedPromotion(autonomy_stat.action_code);
+                return published_promotion ? (
+                  <AutonomyPromotionCard key={autonomy_stat.action_code} autonomy_stat={autonomy_stat} promotion={published_promotion} />
+                ) : (
+                  <AutonomyHeadlineCard
+                    key={autonomy_stat.action_code}
+                    autonomy_stat={autonomy_stat}
+                    has_open_proposal={hasOpenProposal(autonomy_stat.action_code)}
+                    is_proposing={is_proposing}
+                    onPropose={(action_code) => void proposePromotion(action_code)}
+                  />
+                );
+              })}
             <Card
               title="Proposals"
               description={

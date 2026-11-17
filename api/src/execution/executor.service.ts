@@ -4,14 +4,19 @@ import { AuditRecorderService } from '../audit/audit_recorder.service';
 import { AUDIT_EVENT_TYPES } from '../audit/constants/audit_event_type.constant';
 import { CoreBankingAdapter } from '../core_banking/core_banking.adapter';
 import { TransactionClient } from '../database/types/transaction_client.type';
-import { ACTION_CODES } from '../facts/constants/action_code.constant';
+import {
+  ACTION_CODES,
+  CARD_ACTION_CODES,
+} from '../facts/constants/action_code.constant';
 import { formatCurrency } from '../shared_kernel/utils/format_currency.util';
 import {
   DEFAULT_ARRANGEMENT_MONTHS,
   DEFAULT_ARRANGEMENT_TYPE,
   FRAUD_SKILL,
 } from './constants/execution_defaults.constant';
+import { CardActionsExecutor } from './card_actions.executor';
 import { SkillRequiredError } from './errors/skill_required.error';
+import { ServicingActionsExecutor } from './servicing_actions.executor';
 import {
   ExecutionOutcome,
   ExecutionRequest,
@@ -25,6 +30,8 @@ import {
 export class ExecutorService {
   constructor(
     private readonly core_banking_adapter: CoreBankingAdapter,
+    private readonly card_actions_executor: CardActionsExecutor,
+    private readonly servicing_actions_executor: ServicingActionsExecutor,
     private readonly audit_recorder_service: AuditRecorderService,
   ) {}
 
@@ -57,9 +64,22 @@ export class ExecutorService {
     transaction: TransactionClient,
     execution_request: ExecutionRequest,
   ): Promise<ExecutionOutcome> {
+    if (CARD_ACTION_CODES.includes(execution_request.action_code)) {
+      return this.card_actions_executor.runCardAction(
+        transaction,
+        execution_request,
+      );
+    }
     switch (execution_request.action_code) {
-      case ACTION_CODES.LOCK_CARD:
-        return this.lockCard(transaction, execution_request);
+      case ACTION_CODES.RAISE_DISPUTE:
+      case ACTION_CODES.REQUEST_STATEMENT:
+      case ACTION_CODES.UPDATE_PREFERENCES:
+      case ACTION_CODES.PAYMENT_ARRANGEMENT:
+      case ACTION_CODES.SERVICE_REQUEST:
+        return this.servicing_actions_executor.runServicingAction(
+          transaction,
+          execution_request,
+        );
       case ACTION_CODES.REFUND_FEE:
         return this.refundFee(transaction, execution_request);
       case ACTION_CODES.HARDSHIP_REQUEST:
@@ -69,21 +89,6 @@ export class ExecutorService {
       default:
         return Promise.resolve(this.recordHumanHandover(execution_request));
     }
-  }
-
-  private async lockCard(
-    transaction: TransactionClient,
-    execution_request: ExecutionRequest,
-  ): Promise<ExecutionOutcome> {
-    const lock_result = await this.core_banking_adapter.lockCard(
-      transaction,
-      String(execution_request.params.card_id),
-    );
-    return {
-      result: lock_result,
-      contact_event_type: 'CARD_LOCKED',
-      contact_summary: `Card ending ${lock_result.card_last4} temporarily locked over the phone.`,
-    };
   }
 
   private async refundFee(

@@ -4,6 +4,7 @@ export const MAX_SPEAKING_DELAY_MS = 5_000;
 
 export const CALL_START_STAGGER_MS = 2_000;
 export const TOOL_THINKING_DELAY_MS = 700;
+// Only for a script that uses the optional app check.
 export const IDENTITY_PUSH_APPROVAL_DELAY_MS = 2_000;
 export const END_OF_CALL_PAUSE_MS = 1_500;
 
@@ -12,12 +13,17 @@ export const END_OF_CALL_PAUSE_MS = 1_500;
 export const MIN_SIMULATED_LATENCY_MS = 420;
 export const MAX_SIMULATED_LATENCY_MS = 800;
 
-// "Start 5" must include the call that needs attention, so the order is fixed.
+// "Start 5" must include the call that needs attention (Jordan) and the
+// whisper wait, so the order is fixed. The identity stories follow.
 export const SIMULATION_START_ORDER = [
   'balance_query',
   'frustrated_caller',
   'card_lock',
   'supervisor_instruction',
   'confused_elderly',
+  'landline_caller',
+  'failed_identity',
   'fee_refund',
 ];
+
+export const MAX_SIMULATED_CALLS = SIMULATION_START_ORDER.length;

@@ -4,39 +4,33 @@
   "customer_id": "CUS-3003",
   "caller_number": "+61491575254",
   "steps": [
-    { "type": "ai", "text": "Hello, you've reached {{bank_name}}'s AI specialist. This call is recorded." },
+    { "type": "ai", "text": "Hello, thanks for calling {{bank_name}}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?" },
     { "type": "tool", "tool_name": "get_caller_context", "args": {} },
-    { "type": "ai", "text": "Hi Ava, how can I help you today?" },
-    { "type": "customer", "text": "Hi. I got hit with a fifteen dollar overdrawn fee, and I really can't afford extra charges right now. Can you take it off?" },
-    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEGATIVE", "summary": "Ava is asking for a $15 overdrawn fee to be refunded." },
-    { "type": "ai", "text": "I can look at that with you. I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line." },
-    { "type": "tool", "tool_name": "send_identity_push", "args": {} },
-    { "type": "ai", "text": "Thanks Ava. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
+    { "type": "customer", "text": "Hi, Ava Kowalski. I got hit with a fifteen dollar overdrawn fee, and I really can't afford extra charges right now. Can you take it off?" },
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEGATIVE", "summary": "Caller is asking for a $15 overdrawn fee to be refunded." },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "ai", "text": "I can look at that with you. First, what's your date of birth?" },
+    { "type": "customer", "text": "14th of February 1994." },
+    { "type": "ai", "text": "Thanks. And your postcode?" },
+    { "type": "customer", "text": "4218." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Ava Kowalski"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "14th of February 1994"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4218"}]} },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 2} },
+    { "type": "ai", "text": "Thanks {{submit_identity_answers.first_name|Ava}}. For a refund I need one more security question. {{start_identity_check.questions.0.prompt|Roughly how much was your last pay into your account?}}" },
+    { "type": "customer", "text": "Two thousand eight hundred, give or take." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "2800 dollars"}]} },
+    { "type": "ai", "text": "Thank you, that's confirmed. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_fee_history", "args": {} },
     { "type": "ai", "text": "Thanks for holding. I can see the fifteen dollar overdrawn fee from yesterday. Can you tell me what happened?" },
     { "type": "customer", "text": "My rent went out a day before my pay came in. It's been a rough month, honestly. Everything's gone up." },
     { "type": "insight", "intent": "Fee refund request", "sentiment": "DISTRESSED", "summary": "Ava's rent came out before payday and she says it has been a rough month. A supervisor instruction here changes the AI's next line." },
-    {
-      "type": "await_instruction",
-      "timeout_seconds": 60,
-      "ai_with_instruction": "That sounds like a really hard month, Ava, and I'm sorry this fee landed on top of it. If money stays tight, please tell us, because there's more we can do to help than this one fee.",
-      "ai_without_instruction": "Thanks for explaining that, Ava."
-    },
+    { "type": "await_instruction", "timeout_seconds": 60, "ai_with_instruction": "That sounds like a really hard month, Ava, and I'm sorry this fee landed on top of it. If money stays tight, please tell us, because there's more we can do to help than this one fee.", "ai_without_instruction": "Thanks for explaining that, Ava." },
     { "type": "ai", "text": "Thanks, just a moment while I put that through in the system." },
-    {
-      "type": "tool",
-      "tool_name": "propose_action",
-      "args": {
-        "action_code": "REFUND_FEE",
-        "params": { "fee_txn_id": "TXN-F3003" },
-        "summary": "Ava was charged a $15 overdrawn fee when her rent came out a day before her pay. She says money is tight this month and is asking for a refund.",
-        "customer_statement": "My rent went out a day before my pay came in. It's been a rough month, honestly."
-      }
-    },
-    { "type": "ai", "text": "That's lodged as {{propose_action.case_number|a refund request}}. {{propose_action.handled_by.name|One of our team}} is reviewing it, and you'll hear back {{propose_action.expected_timing|soon}}." },
-    { "type": "ai", "text": "I can't promise the outcome, but we'll text you either way." },
+    { "type": "tool", "tool_name": "propose_action", "args": {"action_code": "REFUND_FEE", "params": {"fee_txn_id": "TXN-F3003"}, "summary": "Ava was charged a $15 overdrawn fee when her rent came out a day before her pay. She says money is tight this month and is asking for a refund.", "customer_statement": "My rent went out a day before my pay came in. It's been a rough month, honestly."} },
+    { "type": "ai", "text": "Thanks for holding. {{propose_action.customer_message|Your refund request is with our team, and we'll text you as soon as it's decided.}}" },
     { "type": "customer", "text": "Okay. Thank you, I appreciate it." },
-    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEUTRAL", "summary": "Refund request for the $15 overdrawn fee lodged for staff review." },
-    { "type": "ai", "text": "You're welcome, Ava. Take care." }
+    { "type": "insight", "intent": "Fee refund request", "sentiment": "NEUTRAL", "summary": "Refund request for the $15 overdrawn fee decided by policy; Ava knows the result." },
+    { "type": "ai", "text": "You're welcome. Is there anything else I can help with today?" },
+    { "type": "customer", "text": "No, that's all." },
+    { "type": "ai", "text": "Take care, Ava." }
   ]
 }

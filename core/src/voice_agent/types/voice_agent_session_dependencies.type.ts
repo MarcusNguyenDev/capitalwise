@@ -16,6 +16,8 @@ import { AgentRoom } from './agent_room.type';
 
 export interface VoiceAgentSettings {
   bank_name: string;
+  // Tool results are shown to the model in this time zone.
+  bank_time_zone: string;
   system_prompt: string;
   tools: ChatToolDefinition[];
   ai_voice: string;

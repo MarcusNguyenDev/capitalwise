@@ -1,6 +1,7 @@
 import { Wrench } from "lucide-react";
 
 import { formatCodeLabel, formatMilliseconds } from "@/shared/format/format_values.util";
+import { describeToolResult } from "@/shared/status/describe_tool_result.util";
 import { Badge } from "@/shared/ui/badge.component";
 import { Disclosure } from "@/shared/ui/disclosure.component";
 import { JsonView } from "@/shared/ui/json_view.component";
@@ -15,6 +16,7 @@ interface TraceToolCallProps {
 /** One system check the AI made: a plain name first, what it asked and what came back on expand. */
 export function TraceToolCall({ tool_name, tool_args, tool_result, latency_ms }: TraceToolCallProps) {
   const is_refused = tool_result?.ok === false;
+  const result_status = describeToolResult(tool_result) ?? (is_refused ? { label: "Refused by the server", tone: "danger" as const } : { label: "Done", tone: "positive" as const });
   return (
     <Disclosure
       summary={
@@ -26,7 +28,7 @@ export function TraceToolCall({ tool_name, tool_args, tool_result, latency_ms }:
       }
       meta={
         <span className="flex items-center gap-2">
-          <Badge tone={is_refused ? "danger" : "positive"}>{is_refused ? "Refused by the server" : "Done"}</Badge>
+          <Badge tone={result_status.tone}>{result_status.label}</Badge>
           {latency_ms ? <span className="text-xs tabular-nums">{formatMilliseconds(latency_ms)}</span> : null}
         </span>
       }

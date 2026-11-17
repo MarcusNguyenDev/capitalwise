@@ -5,8 +5,9 @@ import {
   OptionalQueryText,
 } from '../../shared_kernel/decorators/optional_query.decorator';
 import { MAX_TRANSACTION_WINDOW_HOURS } from '../constants/banking_limits.constant';
+import { CallerQueryDto } from './caller_query.dto';
 
-export class ListTransactionsQueryDto {
+export class ListTransactionsQueryDto extends CallerQueryDto {
   @OptionalQueryText()
   @IsString()
   @IsNotEmpty()

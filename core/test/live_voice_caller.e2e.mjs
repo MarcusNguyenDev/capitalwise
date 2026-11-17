@@ -1,13 +1,16 @@
 // End-to-end test of the LIVE voice pipeline against the running stack:
-// a synthetic caller joins the call's LiveKit room as `customer`, speaks
-// lines rendered by Speaches in a different voice (af_heart), approves the
-// identity push through the api, and exercises INSTRUCTION, TAKEOVER +
-// STAFF_MESSAGE + HANDBACK and the end of the call.
+// a synthetic caller (Sarah) joins the call's LiveKit room as `customer`,
+// speaks lines rendered by Speaches in a different voice (af_heart), gives
+// her name, answers the identity questions the AI asks (level 1, then the
+// level 2 question for a new card), reports her card lost and orders a
+// replacement, then exercises INSTRUCTION, TAKEOVER + STAFF_MESSAGE +
+// HANDBACK and the end of the call.
 //
 //   cd core && node test/live_voice_caller.e2e.mjs
 //
 // Needs core (with a reachable chat model), api, LiveKit and Speaches running.
-// It does NOT reset the database. Exit code 0 = every assertion passed.
+// It does NOT reset the database: reset it first if Sarah's card is already
+// blocked (POST /api/demo/reset). Exit code 0 = every assertion passed.
 import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
@@ -37,21 +40,28 @@ const SAMPLE_RATE = 24_000;
 const FRAME_SAMPLES = 240;
 const AUDIBLE_RMS = 300;
 // The CPU test model can need ~30 s per turn when the prompt is not cached.
-const APPROVAL_DELAY_MS = Number(process.env.APPROVAL_DELAY_MS ?? 11_000);
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS ?? 150_000);
+const MAX_CALLER_TURNS = Number(process.env.MAX_CALLER_TURNS ?? 14);
+// On a CPU-only model the prompt warm-up keeps the machine busy (about 80 s
+// for a cold 4B model), and speech-to-text on the same CPU times out meanwhile.
+const WARM_UP_WAIT_MS = Number(process.env.WARM_UP_WAIT_MS ?? 0);
 
 const started_at_ms = Date.now();
 const log = (message) =>
   console.log(`[${((Date.now() - started_at_ms) / 1000).toFixed(1)}s] ${message}`);
 const sleep = (duration_ms) => new Promise((resolve) => setTimeout(resolve, duration_ms));
 
-function readCoreEnv() {
+// The LiveKit key pair for the room check. Only these two values are read.
+function readLivekitCredentials() {
+  if (process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
+    return { key: process.env.LIVEKIT_API_KEY, secret: process.env.LIVEKIT_API_SECRET };
+  }
   const env_values = {};
   for (const line of readFileSync(new URL('../.env', import.meta.url), 'utf8').split('\n')) {
     const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (match) env_values[match[1]] = match[2].trim();
+    if (match && match[1].startsWith('LIVEKIT_API_')) env_values[match[1]] = match[2].trim();
   }
-  return env_values;
+  return { key: env_values.LIVEKIT_API_KEY, secret: env_values.LIVEKIT_API_SECRET };
 }
 
 async function callJson(base_url, path, method = 'GET', body) {
@@ -257,11 +267,12 @@ const voice_status = await core.get('/voice/status');
 log(`Voice status: live=${voice_status.is_live_available} model=${voice_status.language_model.model}`);
 assert.ok(voice_status.is_live_available, `live voice unavailable: ${voice_status.unavailable_reason}`);
 
-// Sarah's card starts ACTIVE (unlock it if an earlier run locked it is not
-// possible through the api, so the check below compares before/after).
+// Sarah's card must start ACTIVE: a blocked card cannot be reported again.
 const overview_before = await api.get('/banking/customers/CUS-1001/overview');
 const card_before = (overview_before.cards ?? []).find((card) => card.card_id === 'CRD-10011');
+const card_ids_before = new Set((overview_before.cards ?? []).map((card) => card.card_id));
 log(`CRD-10011 status before: ${card_before?.status}`);
+assert.equal(card_before?.status, 'ACTIVE', 'Reset the demo first: CRD-10011 is not ACTIVE');
 
 const call = await core.post('/calls', { caller_number: SARAH_NUMBER, channel: 'BROWSER', mode: 'LIVE' });
 const call_id = call.call_id;
@@ -277,47 +288,24 @@ const phone = new SyntheticPhone();
 await phone.join(voice_session.livekit_url ?? LIVEKIT_URL, voice_session.token);
 const joined_at_ms = Date.now();
 
-// Approve the identity push as soon as it appears (the customer taps Approve).
-let approved_notification_id = null;
-let hold_audio_heard = '';
-const approval_loop = (async () => {
-  while (phone.is_running && !approved_notification_id) {
-    const notifications = await api.get(`/notifications?call_id=${call_id}`).catch(() => []);
-    const pending = notifications.find((each) => each.kind === 'IDENTITY_CHECK' && each.status === 'SENT');
-    if (pending) {
-      // The caller takes a while to find the app: long enough for a hold
-      // reminder and a "Thanks for holding." on return.
-      phone.startRecording();
-      await sleep(APPROVAL_DELAY_MS);
-      hold_audio_heard = await transcribe(phone.stopRecording());
-      log(`Phone heard while waiting for the approval: ${JSON.stringify(hold_audio_heard)}`);
-      await api.post(`/notifications/${pending.notification_id}/response`, { response: 'APPROVED' });
-      approved_notification_id = pending.notification_id;
-      log(`Approved identity push ${pending.notification_id}`);
-    }
-    await sleep(500);
-  }
-})();
-
 const readTurns = async () => (await core.get(`/calls/${call_id}`)).turns;
+const readCall = async () => (await core.get(`/calls/${call_id}`)).call;
 const aiTurnsAfter = async (seq) => (await readTurns()).filter((turn) => turn.speaker === 'AI' && turn.seq > seq);
 
-// Greeting, then the model's personalised hello.
+// The greeting asks for the full name; the model must then wait for the caller.
 await waitUntil('the greeting audio', () => phone.audible_onsets.length > 0, 20_000);
 log(`Greeting audio heard ${phone.audible_onsets[0] - joined_at_ms} ms after joining`);
-await waitUntil('the opening reply', async () => (await readTurns()).filter((turn) => turn.speaker === 'AI').length >= 2);
+await waitUntil('the greeting turn', async () => (await readTurns()).some((turn) => turn.speaker === 'AI'));
 await phone.waitForQuiet();
+await sleep(3_000);
 const opening_turns = await readTurns();
-log(`Opening AI turns: ${opening_turns.filter((t) => t.speaker === 'AI').map((t) => JSON.stringify(t.text)).join(' | ')}`);
-check('greeting recorded as the first AI turn', /AI specialist\. This call is recorded/.test(opening_turns.find((turn) => turn.speaker === 'AI')?.text ?? ''));
+const opening_ai_turns = opening_turns.filter((turn) => turn.speaker === 'AI');
+log(`Opening AI turns: ${opening_ai_turns.map((t) => JSON.stringify(t.text)).join(' | ')}`);
+check('greeting asks for the full name and says the call is recorded', /this call is recorded\. Could I start with your full name, please\?$/.test(opening_ai_turns[0]?.text ?? ''), opening_ai_turns[0]?.text);
+check('the AI waits for the caller after the greeting', opening_ai_turns.length === 1, `${opening_ai_turns.length} AI turns`);
 check('get_caller_context ran through the dispatcher', opening_turns.some((turn) => turn.tool_name === 'get_caller_context'));
-
-const CUSTOMER_LINES = [
-  "Hi, I think I've lost my debit card. Can you lock it for me please?",
-  'Yes please, lock my debit card ending in four eight two one.',
-  'Yes, go ahead and lock it now.',
-  'Yes please.',
-];
+const caller_context_turn = opening_turns.find((turn) => turn.tool_name === 'get_caller_context');
+check('get_caller_context gives no name', caller_context_turn && !/sarah|mitchell/i.test(JSON.stringify(caller_context_turn.tool_result)), JSON.stringify(caller_context_turn?.tool_result));
 
 async function speakAndWaitForReply(line) {
   const turns_before = await readTurns();
@@ -331,13 +319,16 @@ async function speakAndWaitForReply(line) {
   const first_audio_ms = await waitUntil('the agent to answer', () => phone.firstAudioAfter(ended_at_ms));
   await waitUntil('an AI turn', async () => (await aiTurnsAfter(customer_turn.seq)).length > 0);
   await phone.waitForQuiet(2_500);
+  // A tool round may still be running after a short pause in the speech.
+  await waitUntil('the turn to settle', async () => !(await readCall()).metrics.hold?.is_on_hold, 60_000).catch(() => undefined);
+  await phone.waitForQuiet(2_500);
   const new_turns = (await readTurns()).filter((turn) => turn.seq > last_seq);
   const entry = {
     said: line,
     transcribed: customer_turn.text,
     end_of_speech_to_first_audio_client_ms: first_audio_ms - ended_at_ms,
     ai_turns: new_turns.filter((turn) => turn.speaker === 'AI').map((turn) => ({ text: turn.text, latency_ms: turn.latency_ms })),
-    tools: new_turns.filter((turn) => turn.tool_name).map((turn) => ({ tool_name: turn.tool_name, args: turn.tool_args, ok: !turn.tool_result?.error })),
+    tools: new_turns.filter((turn) => turn.tool_name).map((turn) => ({ tool_name: turn.tool_name, args: turn.tool_args, ok: !turn.tool_result?.error, result: turn.tool_result })),
   };
   report.customer_turns.push(entry);
   log(`  transcribed: ${JSON.stringify(entry.transcribed)}; first agent audio ${entry.end_of_speech_to_first_audio_client_ms} ms after end of speech`);
@@ -346,36 +337,82 @@ async function speakAndWaitForReply(line) {
   return entry;
 }
 
-const isCardLocked = async () => {
-  const overview = await api.get('/banking/customers/CUS-1001/overview');
-  return (overview.cards ?? []).find((card) => card.card_id === 'CRD-10011')?.status === 'TEMP_LOCKED';
+const readSarahCards = async () => (await api.get('/banking/customers/CUS-1001/overview')).cards ?? [];
+const isCardReportedLost = async () => (await readSarahCards()).find((card) => card.card_id === 'CRD-10011')?.status === 'BLOCKED_LOST';
+const findReplacementCard = async () => (await readSarahCards()).find((card) => !card_ids_before.has(card.card_id));
+
+// Sarah answers whatever the AI just asked, like a real caller would.
+const SARAH = {
+  name: "Hi, it's Sarah Mitchell. I've lost my debit card.",
+  date_of_birth: 'The fourteenth of September, nineteen ninety-two.',
+  postcode: 'Four, two, two, zero.',
+  pay: 'About three thousand one hundred and eighty dollars.',
+  merchant: 'Pulse Gym Cafe. I had a coffee there last night.',
+  last_four: 'Four, eight, two, one.',
+  report_lost: "Yes, it's lost. Please block it.",
+  replacement: 'Yes please, send me a new card.',
+  last_transaction: 'Yes, that was me.',
+  done: "No, that's everything. Thank you.",
 };
 
-for (const line of CUSTOMER_LINES) {
-  await speakAndWaitForReply(line);
-  // A lookup may still be running (the identity push waits for the app).
-  await sleep(1_000);
-  if (await isCardLocked()) break;
+function chooseSarahLine(ai_text, state) {
+  const asked = ai_text.toLowerCase();
+  if (/date of birth|birthday|born/.test(asked)) return SARAH.date_of_birth;
+  if (/postcode|post code/.test(asked)) return SARAH.postcode;
+  if (/last four|four digits/.test(asked)) return SARAH.last_four;
+  if (/shop|business|merchant|where you used your card/.test(asked)) return SARAH.merchant;
+  if (/\bpay\b|salary|income|pension|centrelink/.test(asked)) return SARAH.pay;
+  if (/full name|your name/.test(asked)) return SARAH.name;
+  if (/does that sound|was that you|recogni[sz]e|sound right|sound like you/.test(asked)) return SARAH.last_transaction;
+  if (/new card|replacement|send you|another card/.test(asked)) return SARAH.replacement;
+  if (/anything else/.test(asked)) return state.is_replaced ? SARAH.done : SARAH.replacement;
+  if (state.is_reported_lost) return SARAH.replacement;
+  return SARAH.report_lost;
+}
+
+if (WARM_UP_WAIT_MS > 0) {
+  log(`Waiting ${WARM_UP_WAIT_MS} ms for the model warm-up before the caller speaks`);
+  await sleep(WARM_UP_WAIT_MS);
+}
+let last_ai_text = opening_ai_turns[0]?.text ?? '';
+const sarah_state = { is_reported_lost: false, is_replaced: false };
+for (let turn_index = 0; turn_index < MAX_CALLER_TURNS; turn_index += 1) {
+  const line = chooseSarahLine(last_ai_text, sarah_state);
+  const entry = await speakAndWaitForReply(line);
+  last_ai_text = entry.ai_turns.at(-1)?.text ?? last_ai_text;
+  sarah_state.is_reported_lost = await isCardReportedLost();
+  sarah_state.is_replaced = Boolean(await findReplacementCard());
+  if (sarah_state.is_replaced && line === SARAH.done) break;
 }
 
 const all_turns = await readTurns();
 const customer_turns = all_turns.filter((turn) => turn.speaker === 'CUSTOMER');
 const latency_turns = all_turns.filter((turn) => turn.speaker === 'AI' && turn.latency_ms !== null);
 const hold_events = live_events.filter((event) => event.event_name === 'call.hold' && event.payload.call_id === call_id);
+const tool_turns = all_turns.filter((turn) => turn.tool_name);
+report.model_behaviour.push(`Tools called: ${tool_turns.map((t) => `${t.tool_name}(${JSON.stringify(t.tool_args)}) -> ${t.tool_result?.error ? t.tool_result.error.code : 'ok'}`).join(', ')}`);
 check('customer turns were transcribed into call_turns', customer_turns.length >= 1, `${customer_turns.length} turns`);
 check('AI turns carry latency_ms', latency_turns.length >= 1, latency_turns.map((turn) => turn.latency_ms).join(', '));
-check('call.hold start and end events were emitted', hold_events.some((e) => e.payload.is_on_hold) && hold_events.some((e) => !e.payload.is_on_hold && e.payload.ended_at), hold_events.map((e) => `${e.payload.is_on_hold ? 'start' : 'end'}:${e.payload.reason}:${e.payload.tool_name}`).join(', '));
-const hold_line_turn = all_turns.find((turn) => turn.speaker === 'AI' && /place you on hold|check that for you|notification to your banking app|look that up|in the system now/.test(turn.text ?? ''));
-const first_lookup = all_turns.find((turn) => turn.tool_name && !['get_caller_context', 'update_call_insight'].includes(turn.tool_name));
+
+const first_passed_check = tool_turns.find((turn) => turn.tool_name === 'submit_identity_answers' && turn.tool_result?.is_passed === true);
+check('identity confirmed in conversation (submit_identity_answers passed)', Boolean(first_passed_check));
+const ai_before_identity = all_turns.filter((turn) => turn.speaker === 'AI' && (!first_passed_check || turn.seq < first_passed_check.seq));
+check('the AI used no name before identity level 1', !ai_before_identity.some((turn) => /sarah/i.test(turn.text ?? '')), ai_before_identity.map((turn) => turn.text).join(' | '));
+const identity_hold_events = hold_events.filter((event) => ['start_identity_check', 'submit_identity_answers'].includes(event.payload.tool_name));
+check('identity tools ran without a hold', identity_hold_events.length === 0, `${identity_hold_events.length} identity holds`);
+check('call.hold start and end events were emitted for a lookup or action', hold_events.some((e) => e.payload.is_on_hold) && hold_events.some((e) => !e.payload.is_on_hold && e.payload.ended_at), hold_events.map((e) => `${e.payload.is_on_hold ? 'start' : 'end'}:${e.payload.reason}:${e.payload.tool_name}`).join(', '));
+const hold_line_turn = all_turns.find((turn) => turn.speaker === 'AI' && /place you on hold|check that for you|look that up|in the system now/.test(turn.text ?? ''));
+const first_lookup = all_turns.find((turn) => turn.tool_name && !['get_caller_context', 'update_call_insight', 'start_identity_check', 'submit_identity_answers'].includes(turn.tool_name));
 check('a hold line was played before a lookup', hold_line_turn && first_lookup && hold_line_turn.seq < first_lookup.seq, hold_line_turn ? JSON.stringify(hold_line_turn.text) : 'no hold line');
-check('a hold reminder was heard while waiting for the app approval', /take your time|still here/i.test(hold_audio_heard), hold_audio_heard);
-check('"Thanks for holding." after the long hold', all_turns.some((turn) => turn.speaker === 'AI' && turn.text === 'Thanks for holding.'));
-const card_locked = await isCardLocked();
-check('card CRD-10011 ends TEMP_LOCKED', card_locked);
-if (!card_locked) {
-  report.model_behaviour.push(`Tools called: ${all_turns.filter((t) => t.tool_name).map((t) => `${t.tool_name}(${JSON.stringify(t.tool_args)})`).join(', ')}`);
-}
-const call_after_tools = (await core.get(`/calls/${call_id}`)).call;
+
+const call_after_tools = await readCall();
+check('engine.calls carries the confirmed identity (level 2, KNOWLEDGE, customer bound)', call_after_tools.identity_level === 2 && call_after_tools.identity_method === 'KNOWLEDGE' && call_after_tools.customer_id === 'CUS-1001', `level=${call_after_tools.identity_level} method=${call_after_tools.identity_method} customer=${call_after_tools.customer_id}`);
+check('card CRD-10011 reported lost (BLOCKED_LOST)', await isCardReportedLost());
+const replacement_card = await findReplacementCard();
+check('a replacement card was ordered (new INACTIVE card)', replacement_card?.status === 'INACTIVE', JSON.stringify(replacement_card ?? null));
+const proposals = tool_turns.filter((turn) => turn.tool_name === 'propose_action' || turn.tool_name === 'lock_card');
+check('no app or human deflection: the AI never said "use the app"', !all_turns.some((turn) => turn.speaker === 'AI' && /(use|in) the app|banking app/i.test(turn.text ?? '')));
+report.model_behaviour.push(`Actions: ${proposals.map((turn) => `${turn.tool_args?.action_code ?? turn.tool_name} -> ${turn.tool_result?.outcome ?? turn.tool_result?.error?.code ?? 'ok'}`).join(', ')}`);
 check('metrics.total_hold_ms recorded', (call_after_tools.metrics.total_hold_ms ?? 0) > 0, `${call_after_tools.metrics.total_hold_ms} ms`);
 
 // ── Supervisor: INSTRUCTION ────────────────────────────────────────────────
@@ -384,7 +421,7 @@ const seq_before_instruction = (await readTurns()).at(-1).seq;
 const instruction = await core.post(`/calls/${call_id}/interventions`, {
   staff_id: STAFF_ID,
   type: 'INSTRUCTION',
-  text: 'Remind the caller she can unlock the card any time in the app.',
+  text: 'Remind the caller to cut up the old card if it turns up.',
 });
 await waitUntil('the instruction to be applied', async () =>
   (await readTurns()).some((turn) => turn.seq > seq_before_instruction && turn.text?.startsWith('Instruction applied:')),
@@ -409,7 +446,7 @@ phone.startRecording();
 const staff_message_at_ms = Date.now();
 await core.post(`/calls/${call_id}/staff_messages`, {
   staff_id: STAFF_ID,
-  text: 'Hi Sarah, this is Alex from the team. Your card is safely locked.',
+  text: 'Hi Sarah, this is Alex from the team. Your old card is blocked and the new one is on its way.',
 });
 await waitUntil('the staff message audio', () => phone.firstAudioAfter(staff_message_at_ms), 20_000);
 await phone.waitForQuiet();
@@ -434,7 +471,7 @@ const seq_before_handback = (await readTurns()).at(-1).seq;
 await core.post(`/calls/${call_id}/interventions`, {
   staff_id: STAFF_ID,
   type: 'HANDBACK',
-  text: 'Customer is reassured. Confirm the card is locked and close warmly.',
+  text: 'Customer is reassured. Confirm the new card is on its way and close warmly.',
 });
 const handback_reply = await waitUntil('the AI to resume after HANDBACK', async () =>
   (await aiTurnsAfter(seq_before_handback))[0],
@@ -446,8 +483,8 @@ await phone.waitForQuiet();
 // ── End of call ────────────────────────────────────────────────────────────
 const ended_call = await core.post(`/calls/${call_id}/end`, { ended_by: 'CUSTOMER' });
 check('call ended', ended_call.status === 'ENDED');
-const env_values = readCoreEnv();
-const room_service = new RoomServiceClient(LIVEKIT_URL.replace(/^ws/, 'http'), env_values.LIVEKIT_API_KEY, env_values.LIVEKIT_API_SECRET);
+const livekit_credentials = readLivekitCredentials();
+const room_service = new RoomServiceClient(LIVEKIT_URL.replace(/^ws/, 'http'), livekit_credentials.key, livekit_credentials.secret);
 const is_room_gone = await waitUntil('the room to be deleted', async () =>
   !(await room_service.listRooms()).some((room) => room.name === `call_${call_id}`),
   10_000,
@@ -472,13 +509,11 @@ if (process.env.E2E_EXPECT_REALTIME === '1') {
 report.call_id = call_id;
 report.metrics = final_call.metrics;
 report.hold_events = hold_events.map((event) => event.payload);
-report.approved_notification_id = approved_notification_id;
 report.transcript = (await readTurns()).map((turn) =>
   turn.tool_name ? `SYSTEM tool ${turn.tool_name}` : `${turn.speaker}: ${turn.text}${turn.latency_ms !== null ? ` [${turn.latency_ms} ms]` : ''}`,
 );
 
 await phone.leave();
-await approval_loop.catch(() => undefined);
 socket.close();
 await dispose();
 

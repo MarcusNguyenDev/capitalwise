@@ -4,9 +4,15 @@ import { ConfigType } from '@nestjs/config';
 import { engineApiConfig } from '../config/engine_api.config';
 import { EngineApiRejectedError } from './errors/engine_api_rejected.error';
 import { EngineApiUnavailableError } from './errors/engine_api_unavailable.error';
+import { CallerReference } from './types/caller_reference.type';
 import { CustomerLookup } from './types/customer_lookup.type';
 import { CustomerOverview } from './types/customer_overview.type';
 import { EngineApiRequest } from './types/engine_api_request.type';
+import {
+  IdentityChallenge,
+  IdentityCheckResult,
+  SubmitIdentityAnswersRequest,
+} from './types/identity_challenge.type';
 import {
   EngineNotification,
   NotificationStatus,
@@ -18,6 +24,9 @@ import {
 } from './types/propose_action_request.type';
 
 type BankingResponse = Record<string, unknown>;
+
+// The api's error envelope; any other field of an error body is a detail.
+const ERROR_ENVELOPE_FIELDS = new Set(['status_code', 'error_code', 'message']);
 
 // The only door from core into the api service (system of record). core never
 // reads the `bank` schema itself.
@@ -36,56 +45,64 @@ export class EngineApiClient {
     });
   }
 
-  getCustomerOverview(customer_id: string): Promise<CustomerOverview> {
+  getCustomerOverview(caller: CallerReference): Promise<CustomerOverview> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/overview`,
+      path: `${this.buildCustomerPath(caller.customer_id)}/overview`,
+      query: { call_id: caller.call_id },
     });
   }
 
   getTransactions(
-    customer_id: string,
+    caller: CallerReference,
     filters: { account_id: string; hours?: number },
   ): Promise<BankingResponse> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/transactions`,
-      query: { account_id: filters.account_id, hours: filters.hours },
+      path: `${this.buildCustomerPath(caller.customer_id)}/transactions`,
+      query: {
+        call_id: caller.call_id,
+        account_id: filters.account_id,
+        hours: filters.hours,
+      },
     });
   }
 
   getFeeHistory(
-    customer_id: string,
+    caller: CallerReference,
     account_id?: string,
   ): Promise<BankingResponse> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/fee_history`,
-      query: { account_id },
+      path: `${this.buildCustomerPath(caller.customer_id)}/fee_history`,
+      query: { call_id: caller.call_id, account_id },
     });
   }
 
-  getIncomeSummary(customer_id: string): Promise<BankingResponse> {
+  getIncomeSummary(caller: CallerReference): Promise<BankingResponse> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/income_summary`,
+      path: `${this.buildCustomerPath(caller.customer_id)}/income_summary`,
+      query: { call_id: caller.call_id },
     });
   }
 
   getLoanDetails(
-    customer_id: string,
+    caller: CallerReference,
     account_id: string,
   ): Promise<BankingResponse> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/loans/${encodeURIComponent(account_id)}`,
+      path: `${this.buildCustomerPath(caller.customer_id)}/loans/${encodeURIComponent(account_id)}`,
+      query: { call_id: caller.call_id },
     });
   }
 
-  getHeldPayments(customer_id: string): Promise<BankingResponse> {
+  getHeldPayments(caller: CallerReference): Promise<BankingResponse> {
     return this.send({
       method: 'GET',
-      path: `${this.buildCustomerPath(customer_id)}/held_payments`,
+      path: `${this.buildCustomerPath(caller.customer_id)}/held_payments`,
+      query: { call_id: caller.call_id },
     });
   }
 
@@ -112,6 +129,28 @@ export class EngineApiClient {
     return this.send({
       method: 'POST',
       path: '/api/actions/human_joined',
+      body: request_body,
+    });
+  }
+
+  startIdentityChallenge(request_body: {
+    call_id: string;
+    level: number;
+  }): Promise<IdentityChallenge> {
+    return this.send({
+      method: 'POST',
+      path: '/api/identity/challenges',
+      body: request_body,
+    });
+  }
+
+  submitIdentityAnswers(
+    challenge_id: string,
+    request_body: SubmitIdentityAnswersRequest,
+  ): Promise<IdentityCheckResult> {
+    return this.send({
+      method: 'POST',
+      path: `/api/identity/challenges/${encodeURIComponent(challenge_id)}/answers`,
       body: request_body,
     });
   }
@@ -213,9 +252,16 @@ export class EngineApiClient {
     response_body: unknown,
   ): EngineApiRejectedError {
     const error_body = (response_body ?? {}) as {
+      status_code?: unknown;
       error_code?: unknown;
       message?: unknown;
+      [detail_field: string]: unknown;
     };
+    const api_details = Object.fromEntries(
+      Object.entries(error_body).filter(
+        ([field_name]) => !ERROR_ENVELOPE_FIELDS.has(field_name),
+      ),
+    );
     const api_message = Array.isArray(error_body.message)
       ? error_body.message.join('; ')
       : error_body.message;
@@ -229,6 +275,7 @@ export class EngineApiClient {
         typeof api_message === 'string'
           ? api_message
           : `The request was rejected with HTTP ${status_code}.`,
+      api_details,
     });
   }
 }

@@ -17,6 +17,8 @@ import { ExecutionModule } from './execution/execution.module';
 import { ExplainabilityModule } from './explainability/explainability.module';
 import { FactsModule } from './facts/facts.module';
 import { HealthModule } from './health/health.module';
+import { IdentityModule } from './identity/identity.module';
+import { IdentityRecordsModule } from './identity_records/identity_records.module';
 import { LiveEventsModule } from './live_events/live_events.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PoliciesModule } from './policies/policies.module';
@@ -34,6 +36,7 @@ import { RoutingModule } from './routing/routing.module';
     LiveEventsModule,
     HealthModule,
     CallRecordsModule,
+    IdentityRecordsModule,
     CoreBankingModule,
     PoliciesModule,
     FactsModule,
@@ -42,6 +45,7 @@ import { RoutingModule } from './routing/routing.module';
     NotificationsModule,
     ExecutionModule,
     CasesModule,
+    IdentityModule,
     ApprovalsModule,
     ExplainabilityModule,
     ResourcesModule,

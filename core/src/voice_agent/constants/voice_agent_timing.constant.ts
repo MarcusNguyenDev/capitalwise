@@ -5,8 +5,11 @@ export const CUSTOMER_JOIN_TIMEOUT_MS = 30_000;
 export const CUSTOMER_RECONNECT_GRACE_MS = 10_000;
 
 // Model calls per customer turn that may end in tool calls before the
-// agent gives up with a fallback line.
-export const MAX_TOOL_ROUNDS = 4;
+// agent gives up with a fallback line. Chat models often call one tool per
+// round, and an ordinary lookup already takes four (insight, identity push,
+// overview, transactions), so the limit leaves room for the action itself.
+// A customer message that arrives mid-turn starts a fresh budget.
+export const MAX_TOOL_ROUNDS = 6;
 
 // How often the soft hold tone may repeat between hold lines.
 export const HOLD_TONE_INTERVAL_MS = 3_000;

@@ -6,7 +6,10 @@ const CALL_WITH_NAMES_SQL = `
   SELECT call.call_id, call.caller_number, call.customer_id, call.customer_name, call.channel, call.status,
          call.handled_by_agent_id, agent.display_name AS agent_name,
          call.assigned_staff_id, staff.name AS assigned_staff_name,
-         call.identity_verified, call.verified_at, call.intent, call.sentiment, call.risk_level,
+         call.identity_verified, call.identity_level, call.identity_method, call.is_identity_locked,
+         (SELECT COUNT(*)::int FROM engine.identity_attempts AS attempt
+           WHERE attempt.call_id = call.call_id AND NOT attempt.is_passed) AS identity_failed_attempts,
+         call.verified_at, call.intent, call.sentiment, call.risk_level,
          call.attention_reason, call.started_at, call.ended_at, call.ai_summary, call.metrics,
          EXTRACT(EPOCH FROM (COALESCE(call.ended_at, now()) - call.started_at))::int AS duration_seconds
   FROM engine.calls AS call

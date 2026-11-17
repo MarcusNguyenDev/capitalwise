@@ -1,6 +1,8 @@
 export type ToolName =
   | 'get_caller_context'
-  | 'send_identity_push'
+  | 'start_identity_check'
+  | 'submit_identity_answers'
+  | 'send_app_identity_check'
   | 'get_customer_overview'
   | 'get_recent_transactions'
   | 'get_fee_history'
@@ -26,6 +28,9 @@ export interface ToolDefinition {
   parameters: JsonSchemaObject;
   // class-validator DTO the arguments are validated against server-side.
   args_dto: new () => object;
-  requires_verified_identity: boolean;
+  // The identity level core checks before the tool runs (the api enforces
+  // it too). For propose_action the api checks the level of each action.
+  required_identity_level: 0 | 1 | 2;
+  // The call must be linked to a customer: by caller ID, or by passed answers.
   requires_matched_customer: boolean;
 }

@@ -17,6 +17,8 @@ export interface PolicyOutcome {
   confidence: number;
   reason: string;
   proposal?: Record<string, unknown>;
+  // Routes this outcome to a skill other than the action's own (e.g. CARE).
+  skill?: string;
 }
 
 export interface PolicyRule extends PolicyOutcome {

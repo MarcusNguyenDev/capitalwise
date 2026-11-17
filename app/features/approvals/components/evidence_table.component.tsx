@@ -1,4 +1,4 @@
-import { formatFactValue } from "@/shared/format/format_values.util";
+import { describeActualValue } from "@/shared/policy/describe_policy.util";
 import type { EvidenceRow } from "@/shared/types/case.type";
 import { DataTable } from "@/shared/ui/data_table.component";
 
@@ -20,7 +20,7 @@ export function EvidenceTable({ evidence, caption = "Evidence" }: { evidence: Ev
             </>
           ),
         },
-        { key: "value", header: "Value", class_name: "font-medium", renderCell: (evidence_row) => formatFactValue(evidence_row.value) },
+        { key: "value", header: "Value", class_name: "font-medium", renderCell: (evidence_row) => describeActualValue(evidence_row.fact, evidence_row.value) },
         { key: "source", header: "Source", class_name: "font-mono text-xs text-ink-faint", renderCell: (evidence_row) => evidence_row.source },
       ]}
     />

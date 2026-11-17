@@ -1,0 +1,26 @@
+{
+  "script_id": "failed_identity",
+  "title": "Unknown caller: identity check fails, locked and sent to fraud",
+  "customer_id": "CUS-2003",
+  "caller_number": "+61755501288",
+  "steps": [
+    { "type": "ai", "text": "Hello, thanks for calling {{bank_name}}. You're speaking with the bank's AI specialist, and this call is recorded. Could I start with your full name, please?" },
+    { "type": "tool", "tool_name": "get_caller_context", "args": {} },
+    { "type": "customer", "text": "Yeah, it's Noah Williams. I need to change the mobile number on my account, and send a new card to my new address. It's urgent." },
+    { "type": "insight", "intent": "Change of phone number and new card", "sentiment": "NEUTRAL", "summary": "Caller from a number not on file asks to change the mobile number and send a card to a new address, urgently." },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "ai", "text": "I can help with that. First I need to confirm who I'm speaking with. What's your date of birth?" },
+    { "type": "customer", "text": "4th of November 1975." },
+    { "type": "ai", "text": "Thanks. And the postcode on the account?" },
+    { "type": "customer", "text": "4213." },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Noah Williams"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "4th of November 1975"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4213"}]} },
+    { "type": "ai", "text": "I'm sorry, those details don't match what we have. Could you check your date of birth for me and say it again?" },
+    { "type": "customer", "text": "Ugh. Look, it's the 11th of April 1974. Can we hurry this up?" },
+    { "type": "tool", "tool_name": "start_identity_check", "args": {"level": 1} },
+    { "type": "tool", "tool_name": "submit_identity_answers", "args": {"challenge_id": "{{start_identity_check.challenge_id}}", "answers": [{"question_id": "{{start_identity_check.questions.0.question_id}}", "answer": "Noah Williams"}, {"question_id": "{{start_identity_check.questions.1.question_id}}", "answer": "11th of April 1974"}, {"question_id": "{{start_identity_check.questions.2.question_id}}", "answer": "4213"}]} },
+    { "type": "insight", "intent": "Identity not confirmed", "sentiment": "NEGATIVE", "summary": "Two failed identity checks from a number not on file, asking to change the phone number and redirect a card. Identity locked; fraud case raised." },
+    { "type": "ai", "text": "I'm sorry, I'm not able to confirm your identity today, so for your security I can't go any further with the account on this call. A specialist from our team will help with this." },
+    { "type": "customer", "text": "This is ridiculous." },
+    { "type": "await_takeover", "timeout_seconds": 60, "ai_if_timeout": "I understand it's frustrating. A specialist will follow this up using the contact details we already have on file. Thank you for calling." }
+  ]
+}

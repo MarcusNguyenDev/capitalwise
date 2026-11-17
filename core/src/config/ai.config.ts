@@ -59,6 +59,9 @@ export const aiConfig = registerAs('ai', () => ({
     ollama: {
       base_url: readBaseUrl('OLLAMA_BASE_URL'),
       api_key: readText('OLLAMA_API_KEY'),
+      // Ollama's default context (4096 tokens) is smaller than the prompt plus
+      // the tools; every request asks for this much so the cache is reused.
+      context_tokens: readNumber('OLLAMA_CONTEXT_TOKENS', 16_384),
     },
     vllm: {
       base_url: readBaseUrl('VLLM_BASE_URL'),

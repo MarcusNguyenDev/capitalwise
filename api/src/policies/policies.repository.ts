@@ -9,7 +9,7 @@ export class PoliciesRepository {
 
   selectActionTypes(): Promise<ActionType[]> {
     return this.database.query<ActionType>(
-      `SELECT action_code, description, risk_class, reversible, required_evidence, required_skill
+      `SELECT action_code, description, risk_class, reversible, required_evidence, required_skill, required_identity_level
        FROM engine.action_types
        ORDER BY action_code`,
     );
@@ -17,7 +17,7 @@ export class PoliciesRepository {
 
   async selectActionType(action_code: string): Promise<ActionType | null> {
     const action_rows = await this.database.query<ActionType>(
-      `SELECT action_code, description, risk_class, reversible, required_evidence, required_skill
+      `SELECT action_code, description, risk_class, reversible, required_evidence, required_skill, required_identity_level
        FROM engine.action_types
        WHERE action_code = $1`,
       [action_code],

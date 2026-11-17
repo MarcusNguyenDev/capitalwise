@@ -4,6 +4,10 @@ export interface ProposalHandler {
   role: string;
 }
 
+// What happened, in the caller's terms. Older api versions may omit it.
+export type ProposalOutcome =
+  'DONE' | 'DECLINED' | 'WITH_SPECIALIST' | 'PENDING_REVIEW';
+
 export interface ProposalResult {
   case_number: string;
   action_code: string;
@@ -25,6 +29,7 @@ export interface ProposalResult {
   is_executed: boolean;
   execution_result: Record<string, unknown> | null;
   customer_message: string;
+  outcome?: ProposalOutcome;
 }
 
 export interface ConcernResult extends ProposalResult {

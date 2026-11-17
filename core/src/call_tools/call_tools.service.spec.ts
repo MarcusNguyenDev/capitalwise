@@ -12,6 +12,7 @@ import { ActionToolsHandler } from './handlers/action_tools.handler';
 import { BankingLookupToolsHandler } from './handlers/banking_lookup_tools.handler';
 import { CallInsightToolsHandler } from './handlers/call_insight_tools.handler';
 import { CallerIdentityToolsHandler } from './handlers/caller_identity_tools.handler';
+import { IdentityCheckToolsHandler } from './handlers/identity_check_tools.handler';
 import { IdentityPushWaiter } from './identity_push_waiter.service';
 
 const CALL_ID = '0b0f7c0e-5d3a-4f6e-9a55-3a3f3a3f3a3f';
@@ -27,6 +28,9 @@ function buildCall(call_overrides: Partial<CallRow> = {}): CallRow {
     handled_by_agent_id: 'AI-01',
     assigned_staff_id: null,
     identity_verified: true,
+    identity_level: 2,
+    identity_method: 'KNOWLEDGE',
+    is_identity_locked: false,
     verified_at: new Date(),
     intent: null,
     sentiment: 'NEUTRAL',
@@ -39,6 +43,40 @@ function buildCall(call_overrides: Partial<CallRow> = {}): CallRow {
     ...call_overrides,
   };
 }
+
+const LEVEL_ONE_CHALLENGE = {
+  challenge_id: 'IDC-000001',
+  level: 1,
+  questions: [
+    { question_id: 'Q1', kind: 'FULL_NAME', prompt: "What's your full name?" },
+    {
+      question_id: 'Q2',
+      kind: 'DATE_OF_BIRTH',
+      prompt: "What's your date of birth?",
+    },
+    { question_id: 'Q3', kind: 'POSTCODE', prompt: "What's your postcode?" },
+  ],
+  guidance: 'Ask these one at a time.',
+};
+
+const PASSED_LEVEL_ONE = {
+  is_passed: true,
+  identity_level: 1,
+  method: 'KNOWLEDGE',
+  customer_id: 'CUS-1001',
+  first_name: 'Sarah',
+  full_name: 'Sarah Mitchell',
+  remaining_attempts: 2,
+  is_locked: false,
+  concern_case_number: null,
+};
+
+const UNCONFIRMED_CALL = {
+  identity_verified: false,
+  identity_level: 0,
+  identity_method: null,
+  verified_at: null,
+} as const;
 
 function buildProposalResult(result_overrides: Record<string, unknown> = {}) {
   return {
@@ -89,6 +127,7 @@ function buildHarness(call: CallRow) {
       );
       return call;
     }),
+    findCaseAssignedStaffIdInTransaction: jest.fn().mockResolvedValue('STF-04'),
   };
   const audit_events_repository = {
     insertEvent: jest.fn().mockResolvedValue(undefined),
@@ -110,6 +149,8 @@ function buildHarness(call: CallRow) {
     createIdentityCheck: jest
       .fn()
       .mockResolvedValue({ notification_id: 'NTF-00001', status: 'SENT' }),
+    startIdentityChallenge: jest.fn().mockResolvedValue(LEVEL_ONE_CHALLENGE),
+    submitIdentityAnswers: jest.fn().mockResolvedValue(PASSED_LEVEL_ONE),
     expireNotification: jest.fn().mockResolvedValue({}),
   };
   const identity_push_waiter = {
@@ -133,6 +174,7 @@ function buildHarness(call: CallRow) {
       identity_push_waiter as unknown as IdentityPushWaiter,
       live_event_bus,
     ),
+    new IdentityCheckToolsHandler(typed_api_client, typed_calls_service),
     new BankingLookupToolsHandler(typed_api_client),
     new ActionToolsHandler(typed_api_client, typed_calls_service),
     new CallInsightToolsHandler(typed_calls_service),
@@ -202,11 +244,9 @@ describe('CallToolsService', () => {
       'lock_card',
       'propose_action',
     ])(
-      'rejects %s on an unverified call without touching the api',
+      'rejects %s before identity level 1 without touching the api',
       async (tool_name) => {
-        const harness = buildHarness(
-          buildCall({ identity_verified: false, verified_at: null }),
-        );
+        const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
 
         const tool_outcome = await harness.call_tools_service.dispatchTool(
           CALL_ID,
@@ -217,22 +257,76 @@ describe('CallToolsService', () => {
           },
         );
 
-        expect(tool_outcome).toEqual({
+        expect(tool_outcome).toMatchObject({
           ok: false,
-          error: {
-            code: 'IDENTITY_NOT_VERIFIED',
-            message:
-              'The caller is not verified yet. Call send_identity_push first.',
-          },
+          error: { code: 'IDENTITY_LEVEL_REQUIRED' },
         });
+        if (!tool_outcome.ok) {
+          // Level 2 tools ask for level 1 first, then level 2.
+          expect(tool_outcome.error.message).toMatch(
+            /^Confirm identity to level [12] first: call start_identity_check with level 1/,
+          );
+        }
         for (const api_method of Object.values(harness.engine_api_client)) {
           expect(api_method).not.toHaveBeenCalled();
         }
       },
     );
 
-    it('lets the identity-free tools run on an unverified call', async () => {
-      const harness = buildHarness(buildCall({ identity_verified: false }));
+    it.each([
+      'get_recent_transactions',
+      'get_fee_history',
+      'get_income_summary',
+      'get_loan_details',
+      'get_held_payments',
+    ])(
+      'asks for level 2 before %s reads account details',
+      async (tool_name) => {
+        const harness = buildHarness(buildCall({ identity_level: 1 }));
+
+        const tool_outcome = await harness.call_tools_service.dispatchTool(
+          CALL_ID,
+          tool_name,
+          { account_id: 'ACC-10011' },
+        );
+
+        expect(tool_outcome).toEqual({
+          ok: false,
+          error: {
+            code: 'IDENTITY_LEVEL_REQUIRED',
+            message:
+              'Confirm identity to level 2 first: call start_identity_check with level 2.',
+          },
+        });
+      },
+    );
+
+    it('gives the reduced overview at level 1, marked as such', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 1 }));
+      harness.engine_api_client.getCustomerOverview.mockResolvedValue({
+        customer_id: 'CUS-1001',
+        first_name: 'Sarah',
+        tenure_years: 6,
+        has_care_flag: false,
+        is_reduced_view: true,
+        accounts: [{ account_id: 'ACC-10011', nickname: 'Everyday' }],
+        cards: [{ card_id: 'CRD-10011', card_type: 'DEBIT', status: 'ACTIVE' }],
+      });
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'get_customer_overview',
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: true,
+        result: { is_reduced_view: true },
+      });
+      expect(JSON.stringify(tool_outcome)).not.toMatch(/balance|last4\":\"/);
+    });
+
+    it('lets the identity-free tools run on an unconfirmed call', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
       harness.engine_api_client.lookupCustomer.mockResolvedValue({
         matched: true,
         customer_id: 'CUS-1001',
@@ -253,29 +347,30 @@ describe('CallToolsService', () => {
         },
       );
 
-      // Only match status and first name: no customer id, no surname.
+      // A hint only: never a name, a customer id or a surname.
       expect(caller_context).toEqual({
         ok: true,
-        result: { matched: true, first_name: 'Sarah' },
+        result: { is_known_number: true },
       });
+      expect(JSON.stringify(caller_context)).not.toContain('Sarah');
       expect(call_insight).toEqual({ ok: true, result: { updated: true } });
       expect(harness.applied_call_changes).toEqual([
         { intent: 'Lost card', sentiment: 'NEGATIVE' },
       ]);
     });
 
-    it('rejects account tools when the caller ID matched no customer', async () => {
+    it('rejects the app check when the caller ID matched no customer', async () => {
       const harness = buildHarness(
         buildCall({
+          ...UNCONFIRMED_CALL,
           customer_id: null,
           customer_name: null,
-          identity_verified: false,
         }),
       );
 
       const tool_outcome = await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
       );
 
       expect(tool_outcome).toMatchObject({
@@ -349,6 +444,83 @@ describe('CallToolsService', () => {
       ['flag_concern', { type: 'SCAM_COACHING', quotes: [] }, 'quotes'],
       ['flag_concern', { type: 'SUSPICIOUS', quotes: ['a'] }, 'type'],
       ['update_call_insight', { sentiment: 'FURIOUS' }, 'sentiment'],
+      ['start_identity_check', {}, 'level'],
+      ['start_identity_check', { level: 3 }, 'level'],
+      ['submit_identity_answers', { answers: [] }, 'challenge_id'],
+      [
+        'submit_identity_answers',
+        { challenge_id: 'IDC-000001', answers: [] },
+        'answers',
+      ],
+      [
+        'submit_identity_answers',
+        { challenge_id: 'IDC-000001', answers: [{ question_id: 'Q1' }] },
+        'answer',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'REPORT_LOST_STOLEN',
+          params: { card_id: 'CRD-10011' },
+          summary: 'x',
+        },
+        'reason',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'REPLACE_CARD',
+          params: { card_id: '4821' },
+          summary: 'x',
+        },
+        'card_id',
+      ],
+      [
+        'propose_action',
+        { action_code: 'REFUND_FEE', params: {}, summary: 'x' },
+        'fee_txn_id',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'RAISE_DISPUTE',
+          params: { txn_id: 'TXN-1', reason: 'ANGRY', details: 'x' },
+          summary: 'x',
+        },
+        'reason',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'REQUEST_STATEMENT',
+          params: { account_id: 'ACC-10011', months: 13, delivery: 'POST' },
+          summary: 'x',
+        },
+        'months',
+      ],
+      [
+        'propose_action',
+        { action_code: 'UPDATE_PREFERENCES', params: {}, summary: 'x' },
+        'large_print_letters',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'PAYMENT_ARRANGEMENT',
+          params: { account_id: 'ACC-10031', weeks: 20 },
+          summary: 'x',
+        },
+        'weeks',
+      ],
+      [
+        'propose_action',
+        {
+          action_code: 'SERVICE_REQUEST',
+          params: { request_type: 42, details: 'x' },
+          summary: 'x',
+        },
+        'request_type',
+      ],
     ])('rejects %s with %j', async (tool_name, raw_args, invalid_field) => {
       const harness = buildHarness(buildCall());
 
@@ -365,6 +537,9 @@ describe('CallToolsService', () => {
       }
       expect(harness.engine_api_client.proposeAction).not.toHaveBeenCalled();
       expect(harness.engine_api_client.getTransactions).not.toHaveBeenCalled();
+      expect(
+        harness.engine_api_client.submitIdentityAnswers,
+      ).not.toHaveBeenCalled();
     });
 
     it('rejects arguments that are not a JSON object', async () => {
@@ -399,7 +574,7 @@ describe('CallToolsService', () => {
 
       expect(tool_outcome.ok).toBe(true);
       expect(harness.engine_api_client.getTransactions).toHaveBeenCalledWith(
-        'CUS-1001',
+        { customer_id: 'CUS-1001', call_id: CALL_ID },
         {
           account_id: 'ACC-10041',
           hours: 24,
@@ -432,9 +607,10 @@ describe('CallToolsService', () => {
           raw_args,
         );
 
-        expect(harness.engine_api_client[api_method].mock.calls[0][0]).toBe(
-          'CUS-1001',
-        );
+        expect(harness.engine_api_client[api_method].mock.calls[0][0]).toEqual({
+          customer_id: 'CUS-1001',
+          call_id: CALL_ID,
+        });
         expect(
           JSON.stringify(harness.engine_api_client[api_method].mock.calls),
         ).not.toContain('CUS-1004');
@@ -495,6 +671,7 @@ describe('CallToolsService', () => {
       expect(tool_outcome).toEqual({
         ok: true,
         result: {
+          is_reduced_view: false,
           first_name: 'Sarah',
           tenure_years: 6,
           has_care_flag: false,
@@ -579,25 +756,26 @@ describe('CallToolsService', () => {
     });
   });
 
-  describe('identity push', () => {
-    it('returns verified immediately for an already verified call', async () => {
-      const harness = buildHarness(buildCall({ identity_verified: true }));
+  describe('optional app identity check', () => {
+    it('returns verified immediately for an already confirmed call', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 2 }));
 
       const tool_outcome = await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
       );
 
-      expect(tool_outcome).toEqual({ ok: true, result: { verified: true } });
+      expect(tool_outcome).toEqual({
+        ok: true,
+        result: { verified: true, identity_level: 2 },
+      });
       expect(
         harness.engine_api_client.createIdentityCheck,
       ).not.toHaveBeenCalled();
     });
 
-    it('marks the call verified with the time to identity when the customer approves', async () => {
-      const harness = buildHarness(
-        buildCall({ identity_verified: false, verified_at: null }),
-      );
+    it('grants level 1 by APP_PUSH with the time to identity when the customer approves', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
       const identity_push_listener = jest.fn();
       harness.live_event_bus.subscribe(
         'internal.identity_push_sent',
@@ -606,11 +784,14 @@ describe('CallToolsService', () => {
 
       const tool_outcome = await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
       );
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(tool_outcome).toEqual({ ok: true, result: { verified: true } });
+      expect(tool_outcome).toEqual({
+        ok: true,
+        result: { verified: true, identity_level: 1, first_name: 'Sarah' },
+      });
       expect(harness.identity_push_waiter.waitForAnswer).toHaveBeenCalledWith({
         notification_id: 'NTF-00001',
         call_id: CALL_ID,
@@ -621,19 +802,23 @@ describe('CallToolsService', () => {
         notification_id: 'NTF-00001',
       });
       const [call_changes] = harness.applied_call_changes;
-      expect(call_changes).toMatchObject({ identity_verified: true });
+      expect(call_changes).toMatchObject({
+        identity_verified: true,
+        identity_level: 1,
+        identity_method: 'APP_PUSH',
+      });
       expect(call_changes?.metrics?.time_to_identity_ms).toBeGreaterThanOrEqual(
         20_000,
       );
     });
 
     it('raises the risk level when the customer denies', async () => {
-      const harness = buildHarness(buildCall({ identity_verified: false }));
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
       harness.identity_push_waiter.waitForAnswer.mockResolvedValue('DENIED');
 
       const tool_outcome = await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
       );
 
       expect(tool_outcome).toEqual({
@@ -644,12 +829,12 @@ describe('CallToolsService', () => {
     });
 
     it('expires the notification on timeout', async () => {
-      const harness = buildHarness(buildCall({ identity_verified: false }));
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
       harness.identity_push_waiter.waitForAnswer.mockResolvedValue('TIMEOUT');
 
       const tool_outcome = await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
       );
 
       expect(tool_outcome).toEqual({
@@ -774,7 +959,7 @@ describe('CallToolsService', () => {
     });
 
     it('routes a request for a person and tells the model who and how long', async () => {
-      const harness = buildHarness(buildCall({ identity_verified: false }));
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
       harness.engine_api_client.proposeAction.mockResolvedValue(
         buildProposalResult({
           action_code: 'HUMAN_CALLBACK',
@@ -888,6 +1073,494 @@ describe('CallToolsService', () => {
       });
     });
   });
+  describe('identity checks', () => {
+    it('starts a challenge and passes the questions through without expected values', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'start_identity_check',
+        { level: '1' },
+      );
+
+      expect(
+        harness.engine_api_client.startIdentityChallenge,
+      ).toHaveBeenCalledWith({ call_id: CALL_ID, level: 1 });
+      expect(tool_outcome).toEqual({ ok: true, result: LEVEL_ONE_CHALLENGE });
+    });
+
+    it('does not start a challenge for a level the call already has', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 2 }));
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'start_identity_check',
+        { level: 2 },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: true,
+        result: { is_already_confirmed: true, identity_level: 2 },
+      });
+      expect(
+        harness.engine_api_client.startIdentityChallenge,
+      ).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['LEVEL_ONE_REQUIRED', /level 1/],
+      ['NO_DYNAMIC_QUESTION_AVAILABLE', /request_human/],
+      ['IDENTITY_LOCKED', /specialist/],
+    ])(
+      'answers a %s refusal with a message written for the model',
+      async (api_error_code, expected_message) => {
+        const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
+        harness.engine_api_client.startIdentityChallenge.mockRejectedValue(
+          new EngineApiRejectedError({
+            api_status_code: 409,
+            api_error_code,
+            api_message: 'Refused.',
+          }),
+        );
+
+        const tool_outcome = await harness.call_tools_service.dispatchTool(
+          CALL_ID,
+          'start_identity_check',
+          { level: 2 },
+        );
+
+        expect(tool_outcome).toMatchObject({
+          ok: false,
+          error: { code: api_error_code },
+        });
+        if (!tool_outcome.ok) {
+          expect(tool_outcome.error.message).toMatch(expected_message);
+        }
+      },
+    );
+
+    it('writes the confirmed caller on the call BEFORE answering, then gives the model the first name only', async () => {
+      const harness = buildHarness(
+        buildCall({
+          ...UNCONFIRMED_CALL,
+          customer_id: null,
+          customer_name: null,
+        }),
+      );
+      const order_of_events: string[] = [];
+      harness.calls_service.changeCall.mockImplementation(
+        async (_call_id, _actor, buildCallChanges) => {
+          order_of_events.push('call updated');
+          harness.applied_call_changes.push(
+            await buildCallChanges(
+              buildCall({ ...UNCONFIRMED_CALL, customer_id: null }),
+              {
+                query: jest.fn(),
+              },
+            ),
+          );
+          return buildCall();
+        },
+      );
+      harness.calls_service.insertTurnInTransaction.mockImplementation(
+        async (_transaction, new_turn) => {
+          order_of_events.push('tool result recorded');
+          return { turn_id: 1, seq: 1, ...new_turn };
+        },
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000001',
+          answers: [
+            { question_id: 'Q1', answer: 'Sarah Mitchell' },
+            { question_id: 'Q2', answer: '14th of September 1992' },
+            { question_id: 'Q3', answer: '4220' },
+          ],
+        },
+      );
+
+      expect(
+        harness.engine_api_client.submitIdentityAnswers,
+      ).toHaveBeenCalledWith('IDC-000001', {
+        call_id: CALL_ID,
+        answers: [
+          { question_id: 'Q1', answer: 'Sarah Mitchell' },
+          { question_id: 'Q2', answer: '14th of September 1992' },
+          { question_id: 'Q3', answer: '4220' },
+        ],
+      });
+      expect(tool_outcome).toEqual({
+        ok: true,
+        result: { is_passed: true, identity_level: 1, first_name: 'Sarah' },
+      });
+      expect(order_of_events).toEqual(['call updated', 'tool result recorded']);
+      const [call_changes] = harness.applied_call_changes;
+      expect(call_changes).toMatchObject({
+        customer_id: 'CUS-1001',
+        customer_name: 'Sarah Mitchell',
+        identity_level: 1,
+        identity_method: 'KNOWLEDGE',
+        identity_verified: true,
+        verified_at: expect.any(Date),
+      });
+      expect(call_changes?.metrics?.time_to_identity_ms).toBeGreaterThanOrEqual(
+        20_000,
+      );
+    });
+
+    it('drops thousands separators from spoken amounts before the api compares them', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 1 }));
+
+      await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000002',
+          answers: [{ question_id: 'Q1', answer: 'About $4,210.50, I think' }],
+        },
+      );
+
+      expect(
+        harness.engine_api_client.submitIdentityAnswers.mock.calls[0][1]
+          .answers,
+      ).toEqual([{ question_id: 'Q1', answer: 'About $4210.50, I think' }]);
+    });
+
+    it('steps up from level 1 to level 2 and keeps the first time to identity', async () => {
+      const level_one_call = buildCall({
+        identity_level: 1,
+        metrics: { time_to_identity_ms: 31_000 },
+      });
+      const harness = buildHarness(level_one_call);
+      harness.engine_api_client.submitIdentityAnswers.mockResolvedValue({
+        ...PASSED_LEVEL_ONE,
+        identity_level: 2,
+      });
+
+      await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000002',
+          answers: [{ question_id: 'Q4', answer: 'Pulse Gym Cafe' }],
+        },
+      );
+
+      expect(harness.applied_call_changes[0]).toMatchObject({
+        identity_level: 2,
+        verified_at: level_one_call.verified_at,
+        metrics: { time_to_identity_ms: 31_000 },
+      });
+    });
+
+    it('binds a landline call to the customer the answers resolved to', async () => {
+      const harness = buildHarness(
+        buildCall({
+          ...UNCONFIRMED_CALL,
+          caller_number: '+61755500123',
+          customer_id: null,
+          customer_name: null,
+        }),
+      );
+      harness.engine_api_client.submitIdentityAnswers.mockResolvedValue({
+        ...PASSED_LEVEL_ONE,
+        customer_id: 'CUS-2010',
+        first_name: 'Grace',
+        full_name: 'Grace Papadopoulos',
+      });
+
+      await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000003',
+          answers: [{ question_id: 'Q1', answer: 'Grace Papadopoulos' }],
+        },
+      );
+
+      expect(harness.applied_call_changes[0]).toMatchObject({
+        customer_id: 'CUS-2010',
+        customer_name: 'Grace Papadopoulos',
+        identity_level: 1,
+      });
+    });
+
+    it('never reveals which answer was wrong and leaves the call alone on a failed attempt', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
+      harness.engine_api_client.submitIdentityAnswers.mockResolvedValue({
+        ...PASSED_LEVEL_ONE,
+        is_passed: false,
+        customer_id: null,
+        first_name: null,
+        full_name: null,
+        remaining_attempts: 1,
+      });
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000001',
+          answers: [{ question_id: 'Q2', answer: '1st of January 1990' }],
+        },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: true,
+        result: { is_passed: false, is_locked: false, remaining_attempts: 1 },
+      });
+      expect(JSON.stringify(tool_outcome)).not.toMatch(/first_name|Sarah/);
+      expect(harness.calls_service.changeCall).not.toHaveBeenCalled();
+    });
+
+    it('on lock: is_identity_locked, NEEDS_ATTENTION, HIGH risk and the fraud specialist from the concern case', async () => {
+      const harness = buildHarness(buildCall(UNCONFIRMED_CALL));
+      harness.engine_api_client.submitIdentityAnswers.mockResolvedValue({
+        ...PASSED_LEVEL_ONE,
+        is_passed: false,
+        identity_level: 0,
+        customer_id: null,
+        first_name: null,
+        full_name: null,
+        remaining_attempts: 0,
+        is_locked: true,
+        concern_case_number: 'CASE-001150',
+      });
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'submit_identity_answers',
+        {
+          challenge_id: 'IDC-000001',
+          answers: [{ question_id: 'Q2', answer: '1st of January 1990' }],
+        },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: true,
+        result: { is_passed: false, is_locked: true },
+      });
+      expect(
+        harness.calls_service.findCaseAssignedStaffIdInTransaction,
+      ).toHaveBeenCalledWith(expect.anything(), 'CASE-001150');
+      expect(harness.applied_call_changes[0]).toMatchObject({
+        is_identity_locked: true,
+        status: 'NEEDS_ATTENTION',
+        risk_level: 'HIGH',
+        assigned_staff_id: 'STF-04',
+        attention_reason: 'Identity locked after failed checks',
+      });
+    });
+
+    it('refuses further identity tools once the call is locked', async () => {
+      const harness = buildHarness(
+        buildCall({ ...UNCONFIRMED_CALL, is_identity_locked: true }),
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'start_identity_check',
+        { level: 1 },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: false,
+        error: { code: 'IDENTITY_LOCKED' },
+      });
+      expect(
+        harness.engine_api_client.startIdentityChallenge,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('step-up required by the api', () => {
+    it('maps a 403 IDENTITY_LEVEL_REQUIRED into ok:false with a message for the model', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 1 }));
+      harness.engine_api_client.proposeAction.mockRejectedValue(
+        new EngineApiRejectedError({
+          api_status_code: 403,
+          api_error_code: 'IDENTITY_LEVEL_REQUIRED',
+          api_message: 'Identity level 2 required, current level 1.',
+          api_details: { required_level: 2, current_level: 1 },
+        }),
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'propose_action',
+        {
+          action_code: 'REPLACE_CARD',
+          params: { card_id: 'CRD-10011' },
+          summary: 'Replacement for a lost card',
+        },
+      );
+
+      expect(tool_outcome).toEqual({
+        ok: false,
+        error: {
+          code: 'IDENTITY_LEVEL_REQUIRED',
+          message:
+            'Confirm identity to level 2 first: call start_identity_check with level 2.',
+        },
+      });
+    });
+
+    it.each([
+      ['IDENTITY_LOCKED', 409, /specialist/],
+      ['VERIFIED_CALLER_MISMATCH', 409, /start_identity_check/],
+      ['CUSTOMER_NOT_VERIFIED_CALLER', 403, /someone other/],
+    ])(
+      'maps the api identity gate %s to ok:false with a message for the model',
+      async (api_error_code, api_status_code, expected_message) => {
+        const harness = buildHarness(buildCall());
+        harness.engine_api_client.getCustomerOverview.mockRejectedValue(
+          new EngineApiRejectedError({
+            api_status_code,
+            api_error_code,
+            api_message: `Call x: ${api_error_code}`,
+          }),
+        );
+
+        const tool_outcome = await harness.call_tools_service.dispatchTool(
+          CALL_ID,
+          'get_customer_overview',
+        );
+
+        expect(tool_outcome).toMatchObject({
+          ok: false,
+          error: { code: api_error_code },
+        });
+        if (!tool_outcome.ok) {
+          expect(tool_outcome.error.message).toMatch(expected_message);
+        }
+      },
+    );
+
+    it('maps the same 403 on a lookup', async () => {
+      const harness = buildHarness(buildCall({ identity_level: 1 }));
+      harness.engine_api_client.getHeldPayments.mockRejectedValue(
+        new EngineApiRejectedError({
+          api_status_code: 403,
+          api_error_code: 'IDENTITY_LEVEL_REQUIRED',
+          api_message: 'No.',
+          api_details: { required_level: 2, current_level: 1 },
+        }),
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'get_held_payments',
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: false,
+        error: { code: 'IDENTITY_LEVEL_REQUIRED' },
+      });
+    });
+  });
+
+  describe('new action codes', () => {
+    it.each([
+      ['REPORT_LOST_STOLEN', { card_id: 'CRD-10011', reason: 'LOST' }],
+      ['REPLACE_CARD', { card_id: 'CRD-10011' }],
+      ['UNLOCK_CARD', { card_id: 'CRD-90001' }],
+      ['ACTIVATE_CARD', { card_id: 'CRD-90001' }],
+      [
+        'RAISE_DISPUTE',
+        { txn_id: 'TXN-5012', reason: 'DUPLICATE', details: 'Charged twice' },
+      ],
+      [
+        'REQUEST_STATEMENT',
+        { account_id: 'ACC-10011', months: 3, delivery: 'POST' },
+      ],
+      ['UPDATE_PREFERENCES', { large_print_letters: true }],
+      ['PAYMENT_ARRANGEMENT', { account_id: 'ACC-10031', weeks: 6 }],
+      [
+        'SERVICE_REQUEST',
+        { request_type: 'CHANGE_ADDRESS', details: 'Moving to Tugun' },
+      ],
+    ])('proposes %s with its validated params', async (action_code, params) => {
+      const harness = buildHarness(buildCall());
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'propose_action',
+        {
+          action_code,
+          params: { ...params, customer_id: 'CUS-1004' },
+          summary: 'Done on the call',
+        },
+      );
+
+      expect(tool_outcome.ok).toBe(true);
+      expect(harness.engine_api_client.proposeAction).toHaveBeenCalledWith(
+        expect.objectContaining({ call_id: CALL_ID, action_code, params }),
+      );
+    });
+
+    it('normalises loosely written codes and numbers before the api sees them', async () => {
+      const harness = buildHarness(buildCall());
+
+      await harness.call_tools_service.dispatchTool(CALL_ID, 'propose_action', {
+        action_code: 'REQUEST_STATEMENT',
+        params: { account_id: 'ACC-20101', months: '3', delivery: 'post' },
+        summary: 'Statements by post',
+      });
+      await harness.call_tools_service.dispatchTool(CALL_ID, 'propose_action', {
+        action_code: 'SERVICE_REQUEST',
+        params: { request_type: 'change address', details: 'Moving' },
+        summary: 'Address change',
+      });
+
+      expect(
+        harness.engine_api_client.proposeAction.mock.calls.map(
+          ([proposal_request]) => proposal_request.params,
+        ),
+      ).toEqual([
+        { account_id: 'ACC-20101', months: 3, delivery: 'POST' },
+        { request_type: 'CHANGE_ADDRESS', details: 'Moving' },
+      ]);
+    });
+
+    it('passes the outcome and the one-sentence customer message to the model', async () => {
+      const harness = buildHarness(buildCall());
+      harness.engine_api_client.proposeAction.mockResolvedValue(
+        buildProposalResult({
+          action_code: 'REPLACE_CARD',
+          tier: 1,
+          route: 'AUTO',
+          status: 'AUTO_EXECUTED',
+          outcome: 'DONE',
+          is_executed: true,
+          customer_message:
+            "I've ordered a replacement card. It will arrive at your address in Burleigh Heads by Monday 23 November, and your old card is now blocked.",
+        }),
+      );
+
+      const tool_outcome = await harness.call_tools_service.dispatchTool(
+        CALL_ID,
+        'propose_action',
+        {
+          action_code: 'REPLACE_CARD',
+          params: { card_id: 'CRD-10011' },
+          summary: 'Replacement card',
+        },
+      );
+
+      expect(tool_outcome).toMatchObject({
+        ok: true,
+        result: {
+          outcome: 'DONE',
+          customer_message: expect.stringContaining('replacement card'),
+        },
+      });
+      expect(harness.calls_service.changeCall).not.toHaveBeenCalled();
+    });
+  });
+
   describe('hold state', () => {
     it('puts a scripted call on hold around a bank lookup', async () => {
       const harness = buildHarness(
@@ -907,22 +1580,48 @@ describe('CallToolsService', () => {
       expect(harness.call_hold_service.endHold).toHaveBeenCalledWith(CALL_ID);
     });
 
-    it('waits for the app approval while the identity push is out', async () => {
+    it('waits for the app approval while the optional app check is out', async () => {
       const harness = buildHarness(
-        buildCall({ identity_verified: false, metrics: { mode: 'SCRIPTED' } }),
+        buildCall({ ...UNCONFIRMED_CALL, metrics: { mode: 'SCRIPTED' } }),
       );
 
       await harness.call_tools_service.dispatchTool(
         CALL_ID,
-        'send_identity_push',
+        'send_app_identity_check',
         {},
       );
 
       expect(harness.call_hold_service.startHold).toHaveBeenCalledWith(
         CALL_ID,
-        { reason: 'WAITING_FOR_APP_APPROVAL', tool_name: 'send_identity_push' },
+        {
+          reason: 'WAITING_FOR_APP_APPROVAL',
+          tool_name: 'send_app_identity_check',
+        },
       );
     });
+
+    it.each(['start_identity_check', 'submit_identity_answers'])(
+      'never holds for %s: identity questions are part of the conversation',
+      async (tool_name) => {
+        const harness = buildHarness(
+          buildCall({ ...UNCONFIRMED_CALL, metrics: { mode: 'SCRIPTED' } }),
+        );
+
+        const tool_outcome = await harness.call_tools_service.dispatchTool(
+          CALL_ID,
+          tool_name,
+          tool_name === 'start_identity_check'
+            ? { level: 1 }
+            : {
+                challenge_id: 'IDC-000001',
+                answers: [{ question_id: 'Q1', answer: 'Sarah Mitchell' }],
+              },
+        );
+
+        expect(tool_outcome.ok).toBe(true);
+        expect(harness.call_hold_service.startHold).not.toHaveBeenCalled();
+      },
+    );
 
     it('never holds for silent tools, and leaves LIVE calls to the voice agent', async () => {
       const scripted_harness = buildHarness(

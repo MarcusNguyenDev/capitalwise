@@ -37,7 +37,7 @@ export function CallContextPanel({ call }: { call: LiveCall }) {
           content: call.customer_id ? (
             <CustomerContext customer_id={call.customer_id} />
           ) : (
-            <EmptyState title="Caller not recognised" description="The caller's number did not match a customer." />
+            <EmptyState title="Not identified yet" description="The customer's details appear once the AI confirms who is calling. The phone number alone is only a hint." />
           ),
         },
         { key: "CASES", label: "Cases", count: related_cases.length, content: <RelatedCases related_cases={related_cases} is_loading={cases_query.is_loading} /> },

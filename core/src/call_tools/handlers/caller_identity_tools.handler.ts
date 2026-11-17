@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { CallsService } from '../../calls/calls.service';
+import { readIdentityLevel } from '../../calls/read_identity_level.util';
 import { CallRow } from '../../calls/types/call_row.type';
 import { EngineApiClient } from '../../engine_api/engine_api.client';
 import { INTERNAL_EVENT } from '../../live/constants/live_event_names.constant';
@@ -26,18 +27,19 @@ export class CallerIdentityToolsHandler {
     const customer_lookup = await this.engine_api_client.lookupCustomer(
       tool_context.call.caller_number,
     );
-    return {
-      matched: customer_lookup.matched,
-      first_name: customer_lookup.matched ? customer_lookup.first_name : null,
-    };
+    // Only a hint: never the name, so the model cannot greet a caller by a
+    // name they have not confirmed (a spouse may use the same phone).
+    return { is_known_number: customer_lookup.matched };
   }
 
-  async sendIdentityPush(
+  // The optional app method: grants identity level 1 only.
+  async sendAppIdentityCheck(
     tool_context: ToolContext,
   ): Promise<Record<string, unknown>> {
     const { call } = tool_context;
-    if (call.identity_verified) {
-      return { verified: true };
+    const current_level = readIdentityLevel(call);
+    if (current_level >= 1) {
+      return { verified: true, identity_level: current_level };
     }
     const notification = await this.engine_api_client.createIdentityCheck(
       call.call_id,
@@ -56,7 +58,9 @@ export class CallerIdentityToolsHandler {
 
     if (identity_push_answer === 'APPROVED') {
       await this.markIdentityVerified(call);
-      return { verified: true };
+      // The app on file belongs to the caller-ID customer.
+      const first_name = call.customer_name?.split(' ')[0] ?? null;
+      return { verified: true, identity_level: 1, first_name };
     }
     if (identity_push_answer === 'DENIED') {
       await this.raiseRiskAfterDenial(call);
@@ -76,9 +80,15 @@ export class CallerIdentityToolsHandler {
       call.call_id,
       { actor_type: 'CUSTOMER', actor_id: call.customer_id },
       (locked_call) => {
+        // The caller may have answered the questions meanwhile.
+        if (readIdentityLevel(locked_call) >= 1) {
+          return null;
+        }
         const verified_at = new Date();
         return {
           identity_verified: true,
+          identity_level: 1,
+          identity_method: 'APP_PUSH',
           verified_at,
           metrics: {
             ...locked_call.metrics,

@@ -12,6 +12,9 @@ const MIN_BATCH_SIZE = 2;
 const BATCH_NOUNS: Record<string, string> = {
   [ACTION_CODES.REFUND_FEE]: 'fee refunds',
   [ACTION_CODES.HARDSHIP_REQUEST]: 'hardship requests',
+  [ACTION_CODES.PAYMENT_ARRANGEMENT]: 'payment arrangements',
+  [ACTION_CODES.RAISE_DISPUTE]: 'disputes',
+  [ACTION_CODES.SERVICE_REQUEST]: 'service requests',
 };
 
 export interface BatchGroup {

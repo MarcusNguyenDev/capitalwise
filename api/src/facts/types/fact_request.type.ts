@@ -6,6 +6,8 @@ export interface FactRequest {
   action_code: string;
   call: CallRecord;
   customer_id: string;
+  // From engine.identity_attempts, worked out before the facts are built.
+  identity_level: number;
   params: Record<string, unknown>;
   customer_statement: string | null;
   soft_signals: SoftSignals;
