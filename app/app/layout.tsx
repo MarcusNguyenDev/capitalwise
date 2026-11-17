@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip.component";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "CapitalWise | Westpac specialist console", template: "%s | CapitalWise" },
+  title: { default: "CapitalWise | Westpac Hackathon Competition project", template: "%s | CapitalWise" },
   description: "An AI phone specialist with live human oversight. Prototype, mock data only.",
 };
 

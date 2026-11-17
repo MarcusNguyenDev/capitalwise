@@ -3,7 +3,8 @@
 import { ArrowUpRight, Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 
-import { WestpacBrand } from "@/shared/brand/westpac_brand.component";
+import { BankBrand } from "@/shared/brand/bank_brand.component";
+import { PROJECT_LABEL } from "@/shared/brand/project_label.constant";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { KeyboardKey } from "@/shared/ui/keyboard_key.component";
 
@@ -29,8 +30,8 @@ export function SideNavigation({ onOpenSearch, onOpenShortcuts, onResetDemo, onN
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-15 shrink-0 items-center gap-3 border-b border-line px-6">
-        <WestpacBrand bank_name={bank_name} />
-        <span className="border-l border-line pl-3 text-sm font-semibold text-brand-deep">{bank_name}</span>
+        <BankBrand bank_name={bank_name} />
+        <span className="border-l border-line pl-3 text-xs font-semibold leading-tight text-brand-deep">{PROJECT_LABEL}</span>
       </div>
       <div className="px-6 pb-4 pt-6">
         <p className="text-xl font-bold tracking-tight text-brand-deep">CapitalWise<span className="text-accent">.</span></p>

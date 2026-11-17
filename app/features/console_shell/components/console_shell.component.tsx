@@ -4,7 +4,7 @@ import { ChevronRight, Keyboard, Menu, Search } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { WestpacBrand } from "@/shared/brand/westpac_brand.component";
+import { BankBrand } from "@/shared/brand/bank_brand.component";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { useKeyboardShortcut } from "@/shared/keyboard/use_keyboard_shortcut.hook";
 import { IconButton } from "@/shared/ui/icon_button.component";
@@ -45,7 +45,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         <header className="flex h-15 shrink-0 items-center justify-between gap-3 border-b border-line bg-white px-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <IconButton label="Open menu" icon={<Menu className="size-5" aria-hidden />} onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden" />
-            <WestpacBrand bank_name={bank_name} className="w-10 lg:hidden" />
+            <BankBrand bank_name={bank_name} className="w-10 lg:hidden" />
             <span className="truncate text-sm font-semibold text-brand-deep sm:hidden">CapitalWise</span>
             <p className="hidden items-center gap-2 text-xs sm:flex">
               <span className="text-ink-faint">Customer care</span>

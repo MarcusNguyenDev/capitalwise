@@ -4,6 +4,7 @@ import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import { PROJECT_LABEL } from "@/shared/brand/project_label.constant";
 import { useDemoConfig } from "@/shared/demo/demo_config.provider";
 import { useCurrentTime } from "@/shared/format/use_current_time.hook";
 import { useLiveSocket } from "@/shared/live/live_socket.provider";
@@ -135,11 +136,7 @@ export function CustomerPhone() {
 
       <aside aria-label="Demo controls" className="hidden w-72 shrink-0 flex-col md:flex lg:w-96">
         <div className="mb-10 flex items-center gap-5">
-          {bank_name.trim().toLowerCase() === "westpac" ? (
-            <Image src="/brand/westpac-logo.svg" width={69} height={28} alt="Westpac" className="h-7 w-auto" />
-          ) : (
-            <span className="text-xl font-bold text-brand-deep">{bank_name}</span>
-          )}
+          <span className="text-xl font-bold leading-tight text-brand-deep">{PROJECT_LABEL}</span>
           <span className="border-l border-brand-deep/20 py-1 pl-5 text-sm font-semibold text-brand-deep">CapitalWise</span>
         </div>
         <div className="mb-7">

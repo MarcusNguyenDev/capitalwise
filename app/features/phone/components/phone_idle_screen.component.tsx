@@ -1,5 +1,4 @@
 import { Phone } from "lucide-react";
-import Image from "next/image";
 
 import type { CustomerNotification } from "@/shared/types/case.type";
 import type { CallMode } from "@/shared/types/call.type";
@@ -43,11 +42,7 @@ export function PhoneIdleScreen({ caller, bank_name, call_mode, call_blocked_rea
       </div>
 
       <div className="mt-7 flex h-12 items-center justify-center">
-        {bank_name.trim().toLowerCase() === "westpac" ? (
-          <Image src="/brand/westpac-logo.svg" width={89} height={36} alt="Westpac" className="h-9 w-auto" />
-        ) : (
-          <span className="flex size-12 items-center justify-center rounded-lg bg-accent text-2xl font-black text-white" aria-hidden>{bank_name.charAt(0)}</span>
-        )}
+        <span className="flex size-12 items-center justify-center rounded-lg bg-accent text-2xl font-black text-white" aria-hidden>{bank_name.charAt(0)}</span>
       </div>
       <p className="mt-3 text-sm font-semibold text-brand-deep">{bank_name} phone banking</p>
       <p className="mt-4 text-2xl font-bold tracking-tight text-brand-deep">Here to help.</p>
