@@ -13,6 +13,7 @@ import { DEFAULT_CALLER_ID, findHeroPersona, isUnscriptedCaller } from "../const
 import { useCallerDirectory } from "../hooks/use_caller_directory.hook";
 import { usePhoneCall } from "../hooks/use_phone_call.hook";
 import { usePhoneNotifications } from "../hooks/use_phone_notifications.hook";
+import { CallerDetailsPanel } from "./caller_details_card.component";
 import { PhoneCallScreen } from "./phone_call_screen.component";
 import { PhoneDemoControls } from "./phone_demo_controls.component";
 import { PhoneFrame } from "./phone_frame.component";
@@ -89,6 +90,10 @@ export function CustomerPhone() {
     />
   );
 
+  // The selected caller's own details, for whoever plays them to answer the
+  // security questions. Reloaded when a call starts or ends (a new card, say).
+  const caller_details_panel = <CallerDetailsPanel customer_id={selected_customer_id} refresh_key={phone_call.call_phase} />;
+
   const banners = phone_notifications.banner_notifications.map((notification) => (
     <PhoneNotificationBanner
       key={notification.notification_id}
@@ -129,6 +134,8 @@ export function CustomerPhone() {
           </p>
         </div>
         <div className="rounded-lg border border-line bg-white p-4 shadow-card">{demo_controls}</div>
+        {/* Below xl there is no room for a third column. */}
+        <div className="rounded-lg border border-line bg-white p-4 shadow-card xl:hidden">{caller_details_panel}</div>
         <p className="text-xs text-ink-faint">Prototype, mock data only</p>
       </aside>
 
@@ -165,8 +172,15 @@ export function CustomerPhone() {
         </PhoneFrame>
       </div>
 
+      <aside aria-label="Caller's details" className="hidden w-72 shrink-0 rounded-lg border border-line bg-white p-4 shadow-card xl:block">
+        {caller_details_panel}
+      </aside>
+
       <Sheet is_open={is_demo_sheet_open} onOpenChange={setIsDemoSheetOpen} title="Demo settings" description="Not part of the customer's phone." side="right">
-        <div className="p-4">{demo_controls}</div>
+        <div className="flex flex-col gap-5 p-4">
+          {demo_controls}
+          <div className="rounded-lg border border-line bg-canvas p-3">{caller_details_panel}</div>
+        </div>
       </Sheet>
     </main>
   );
