@@ -40,3 +40,6 @@ lerna-debug.log*
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# rendered phrase audio (core/.cache/phrase_audio): regenerated on demand
+/.cache

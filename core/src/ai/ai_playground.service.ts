@@ -119,6 +119,7 @@ export class AiPlaygroundService {
         model: try_speech.model,
         voice: try_speech.voice,
         speed: try_speech.speed,
+        instructions: try_speech.instructions,
       },
       { provider: try_speech.provider },
     );

@@ -45,13 +45,15 @@ describe('tool hold classes', () => {
   });
 
   it('picks one reason for a batch: approval first, silent batches need none', () => {
-    expect(findHoldReason(['update_call_insight', 'get_caller_context'])).toBeNull();
+    expect(
+      findHoldReason(['update_call_insight', 'get_caller_context']),
+    ).toBeNull();
     expect(findHoldReason(['update_call_insight', 'get_fee_history'])).toBe(
       'CHECKING_SYSTEM',
     );
-    expect(findHoldReason(['get_customer_overview', 'send_identity_push'])).toBe(
-      'WAITING_FOR_APP_APPROVAL',
-    );
+    expect(
+      findHoldReason(['get_customer_overview', 'send_identity_push']),
+    ).toBe('WAITING_FOR_APP_APPROVAL');
   });
 });
 
@@ -66,8 +68,12 @@ describe('HoldPolicy', () => {
     const third_line = hold_policy.chooseAcknowledgement('CHECKING_SYSTEM');
 
     expect(first_line).toBe(HOLD_PHRASES.CHECKING_SYSTEM_ACKNOWLEDGEMENT);
-    expect(second_line).toBe(HOLD_PHRASES.CHECKING_SYSTEM_SHORT_ACKNOWLEDGEMENTS[0]);
-    expect(third_line).toBe(HOLD_PHRASES.CHECKING_SYSTEM_SHORT_ACKNOWLEDGEMENTS[1]);
+    expect(second_line).toBe(
+      HOLD_PHRASES.CHECKING_SYSTEM_SHORT_ACKNOWLEDGEMENTS[0],
+    );
+    expect(third_line).toBe(
+      HOLD_PHRASES.CHECKING_SYSTEM_SHORT_ACKNOWLEDGEMENTS[1],
+    );
   });
 
   it('plays the full line again once 30 s have passed since the last full one', () => {

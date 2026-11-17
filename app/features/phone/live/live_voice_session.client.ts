@@ -1,7 +1,7 @@
 import { CallRoomConnectionError } from "@/features/voice/errors/call_room_connection.error";
 import { CallRoom } from "@/features/voice/livekit/call_room.client";
 import type { CallRoomCloseReason } from "@/features/voice/livekit/call_room.type";
-import { createVoiceSession } from "@/shared/api_client/core_api.client";
+import { createVoiceSession, sendCustomerMessage } from "@/shared/api_client/core_api.client";
 import type { CallCommand, CallTurn, TranscriptDelta } from "@/shared/types/call.type";
 
 import { DEFAULT_TAKEOVER_ANNOUNCEMENT } from "../constants/phone_call.constant";
@@ -81,6 +81,11 @@ export class LiveVoiceSession implements PhoneCallSession {
       text: transcript_delta.delta,
       is_final: false,
     });
+  }
+
+  /** The voice agent takes it like a transcribed utterance; the caption arrives as the caller's turn. */
+  async sendTypedMessage(text: string): Promise<void> {
+    await sendCustomerMessage(this.options.call_id, text);
   }
 
   unlockAudio(): void {

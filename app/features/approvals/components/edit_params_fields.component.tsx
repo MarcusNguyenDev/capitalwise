@@ -4,7 +4,7 @@ import type { EngineCase } from "@/shared/types/case.type";
 import { ARRANGEMENT_TYPES, MAX_ARRANGEMENT_MONTHS } from "../constants/editable_params.constant";
 import { readFeeAmount } from "../utils/read_case_params.util";
 
-const FIELD_CLASS_NAME = "mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-lg font-semibold";
+const FIELD_CLASS_NAME = "h-9 w-full rounded-md border border-line-strong bg-white px-2.5 text-sm";
 
 interface EditParamsFieldsProps {
   engine_case: EngineCase;
@@ -15,8 +15,8 @@ interface EditParamsFieldsProps {
 function RefundAmountField({ engine_case, edited_params, onChange }: EditParamsFieldsProps) {
   const fee_amount = readFeeAmount(engine_case);
   return (
-    <label className="block max-w-xs">
-      <span className="font-semibold">Refund amount{fee_amount === null ? "" : ` (up to ${formatCurrency(fee_amount)})`}</span>
+    <label className="flex max-w-xs flex-col gap-1.5">
+      <span className="text-sm font-semibold">Refund amount{fee_amount === null ? "" : ` (up to ${formatCurrency(fee_amount)})`}</span>
       <input
         type="number"
         min={0.01}
@@ -32,9 +32,9 @@ function RefundAmountField({ engine_case, edited_params, onChange }: EditParamsF
 
 function HardshipTermsFields({ edited_params, onChange }: EditParamsFieldsProps) {
   return (
-    <div className="grid max-w-xl grid-cols-2 gap-4">
-      <label className="block">
-        <span className="font-semibold">Arrangement</span>
+    <div className="grid grid-cols-2 gap-4">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-semibold">Arrangement</span>
         <select
           className={FIELD_CLASS_NAME}
           value={String(edited_params.arrangement_type ?? "")}
@@ -47,8 +47,8 @@ function HardshipTermsFields({ edited_params, onChange }: EditParamsFieldsProps)
           ))}
         </select>
       </label>
-      <label className="block">
-        <span className="font-semibold">Months</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-semibold">Months</span>
         <input
           type="number"
           min={1}

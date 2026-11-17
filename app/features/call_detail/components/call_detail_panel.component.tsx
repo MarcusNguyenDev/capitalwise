@@ -1,123 +1,101 @@
 "use client";
 
-import { useEffect } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useRef } from "react";
 
-import { readActiveHold } from "@/shared/call_hold/apply_call_hold.util";
-import { OnHoldChip } from "@/shared/call_hold/on_hold_chip.component";
-import { formatDuration, secondsBetween } from "@/shared/format/format_values.util";
-import { useCurrentTime } from "@/shared/format/use_current_time.hook";
+import { useKeyboardShortcut } from "@/shared/keyboard/use_keyboard_shortcut.hook";
 import { useCurrentStaff } from "@/shared/staff/current_staff.provider";
-import type { LiveCall } from "@/shared/types/call.type";
-import { CallStatusChip, Chip, RiskChip, SentimentChip } from "@/shared/ui/chip.component";
-import { ErrorState, LoadingState } from "@/shared/ui/surface.component";
+import { ErrorState } from "@/shared/ui/error_state.component";
+import { SkeletonDetail } from "@/shared/ui/skeleton.component";
 
-import { describeCallSource } from "../describe_call_source.util";
 import { useCallDetail } from "../hooks/use_call_detail.hook";
 import { useStaffCallAudio } from "../hooks/use_staff_call_audio.hook";
+import { useSupervisorActions } from "../hooks/use_supervisor_actions.hook";
 import { recordMonitoring } from "../record_monitoring.util";
 import { buildTranscriptEntries } from "../transcript/build_transcript_entries.util";
-import { CallActionButtons } from "./call_action_buttons.component";
-import { CallAudioBar } from "./call_audio_bar.component";
-import { CallMetrics } from "./call_metrics.component";
+import { CallAudioStrip } from "./call_audio_strip.component";
+import { CallContextPanel } from "./call_context_panel.component";
+import { CallDetailHeader } from "./call_detail_header.component";
+import { CallEndedFooter } from "./call_ended_footer.component";
+import { CallStateBanner } from "./call_state_banner.component";
 import { CallTranscript } from "./call_transcript.component";
-import { CustomerContext } from "./customer_context.component";
-import { RelatedCases } from "./related_cases.component";
-import { SupervisorControls } from "./supervisor_controls.component";
-
-function PanelSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-ink-faint">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function CallHeader({ call, onClose }: { call: LiveCall; onClose: () => void }) {
-  const current_time_ms = useCurrentTime();
-  const duration_seconds = call.status === "ENDED" || current_time_ms === null ? call.duration_seconds : secondsBetween(call.started_at, current_time_ms);
-  const hold = readActiveHold(call);
-
-  return (
-    <header className="flex items-start gap-4 border-b border-line px-6 py-3.5">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-2xl font-bold">{call.customer_name ?? "Unknown caller"}</h2>
-          <CallStatusChip status={call.status} />
-          {hold ? <OnHoldChip hold={hold} current_time_ms={current_time_ms} should_show_reason /> : null}
-          {call.attention_reason && call.status !== "ENDED" ? <span className="font-semibold text-accent">{call.attention_reason}</span> : null}
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-ink-soft">
-          <SentimentChip sentiment={call.sentiment} />
-          <RiskChip risk_level={call.risk_level} />
-          <Chip tone={call.identity_verified ? "positive" : "neutral"}>{call.identity_verified ? "✓ Identity verified" : "Not verified yet"}</Chip>
-          <span>
-            {call.intent ?? "Working out what the caller needs"} · {describeCallSource(call)} · {formatDuration(duration_seconds)}
-            {call.agent_name ? ` · ${call.agent_name}` : ""}
-          </span>
-        </div>
-      </div>
-      <CallActionButtons call={call} />
-      <button type="button" aria-label="Close call detail" className="rounded-lg px-2 text-3xl leading-none text-ink-faint hover:bg-surface" onClick={onClose}>
-        ×
-      </button>
-    </header>
-  );
-}
+import { ReplyComposer } from "./reply_composer.component";
+import { WhisperComposer } from "./whisper_composer.component";
 
 interface CallDetailPanelProps {
   call_id: string;
   onClose: () => void;
 }
 
-/** Everything a supervisor needs for one call: live transcript, context, case packs, metrics and the controls. */
+function readFirstName(customer_name: string | null): string {
+  return customer_name?.split(" ")[0] ?? "the customer";
+}
+
+/** One call: what is happening now, the conversation with the right message box, and the context beside it. */
 export function CallDetailPanel({ call_id, onClose }: CallDetailPanelProps) {
   const call_detail = useCallDetail(call_id);
   const { current_staff_id } = useCurrentStaff();
   const call = call_detail.call;
   const staff_call_audio = useStaffCallAudio(call_id, call);
+  const supervisor_actions = useSupervisorActions(call_id);
+  const composer_input_ref = useRef<HTMLInputElement>(null);
+  const is_live = call !== null && call.status !== "ENDED";
 
   useEffect(() => {
     recordMonitoring(call_id, current_staff_id);
   }, [call_id, current_staff_id]);
 
+  useKeyboardShortcut("Escape", onClose);
+  useKeyboardShortcut("w", () => composer_input_ref.current?.focus(), { is_enabled: is_live });
+  useKeyboardShortcut("t", () => void supervisor_actions.takeOver(), { is_enabled: is_live && call?.status !== "HUMAN_ACTIVE" });
+  useKeyboardShortcut("l", () => (staff_call_audio.listen_state === "OFF" ? staff_call_audio.startListening() : staff_call_audio.stopListening()), {
+    is_enabled: is_live && staff_call_audio.can_use_audio,
+  });
+
   if (!call) {
-    return (
-      <aside className="rounded-2xl border border-line bg-white p-6">
-        {call_detail.error_message ? <ErrorState message={call_detail.error_message} /> : <LoadingState label="Opening the call" />}
-      </aside>
+    return call_detail.error_message ? (
+      <ErrorState className="m-6" title="Could not open this call" message={call_detail.error_message} />
+    ) : (
+      <SkeletonDetail label="Opening the call" />
     );
   }
 
   const transcript_entries = buildTranscriptEntries(call_detail);
 
   return (
-    <aside className="flex h-[calc(100vh-21.5rem)] min-h-[600px] animate-slide-in flex-col rounded-2xl border border-line bg-white shadow-lg">
-      <CallHeader call={call} onClose={onClose} />
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_19rem] gap-5 p-5">
-        <div className="flex min-h-0 flex-col gap-3">
-          {call.status === "ENDED" ? null : <CallAudioBar staff_call_audio={staff_call_audio} />}
-          <CallTranscript entries={transcript_entries} />
-          <SupervisorControls call={call} staff_call_audio={staff_call_audio} />
-        </div>
-        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-          <PanelSection title="AI running summary">
-            <p key={call.ai_summary} className="animate-highlight rounded-lg">
-              {call.ai_summary ?? "The AI has not summarised the call yet."}
-            </p>
-          </PanelSection>
-          <PanelSection title="Call metrics">
-            <CallMetrics metrics={call.metrics ?? {}} />
-          </PanelSection>
-          <PanelSection title="Case packs">
-            <RelatedCases call_id={call_id} />
-          </PanelSection>
-          <PanelSection title="Customer context">
-            {call.customer_id ? <CustomerContext customer_id={call.customer_id} /> : <p className="text-ink-faint">The caller&apos;s number did not match a customer.</p>}
-          </PanelSection>
+    <article aria-label={`Call with ${call.customer_name ?? "unknown caller"}`} className="flex min-h-0 flex-1 animate-fade-in flex-col bg-white">
+      <CallDetailHeader call={call} staff_call_audio={staff_call_audio} supervisor_actions={supervisor_actions} onClose={onClose} />
+      <CallStateBanner call={call} current_staff_id={current_staff_id} />
+      {is_live ? (
+        <CallAudioStrip
+          participants={staff_call_audio.room_state?.participants ?? null}
+          can_play_audio={staff_call_audio.room_state?.can_play_audio ?? true}
+          notice={staff_call_audio.notice}
+          onUnlockAudio={staff_call_audio.unlockAudio}
+        />
+      ) : null}
+      <div className="@container flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @3xl:flex-row @3xl:overflow-hidden">
+          <div className="flex min-h-[26rem] min-w-0 flex-1 flex-col @3xl:min-h-0">
+            <CallTranscript entries={transcript_entries} />
+            {call.status === "ENDED" ? <CallEndedFooter call_id={call.call_id} /> : null}
+            {call.status === "HUMAN_ACTIVE" ? (
+              <ReplyComposer
+                customer_first_name={readFirstName(call.customer_name)}
+                staff_call_audio={staff_call_audio}
+                is_disabled={supervisor_actions.is_busy}
+                input_ref={composer_input_ref}
+                onSendReply={supervisor_actions.sendReply}
+              />
+            ) : null}
+            {call.status === "AI_ACTIVE" || call.status === "NEEDS_ATTENTION" ? (
+              <WhisperComposer is_disabled={supervisor_actions.is_busy} input_ref={composer_input_ref} onWhisper={supervisor_actions.whisperInstruction} />
+            ) : null}
+          </div>
+          <aside aria-label="Call context" className="shrink-0 border-t border-line @3xl:w-80 @3xl:border-l @3xl:border-t-0">
+            <CallContextPanel call={call} />
+          </aside>
         </div>
       </div>
-    </aside>
+    </article>
   );
 }

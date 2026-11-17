@@ -56,9 +56,14 @@ export function formatCodeLabel(code: string | null | undefined): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
 export function formatFactValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "–";
+  }
+  if (typeof value === "string" && ISO_TIMESTAMP_PATTERN.test(value)) {
+    return formatDateTime(value);
   }
   if (typeof value === "boolean") {
     return value ? "Yes" : "No";

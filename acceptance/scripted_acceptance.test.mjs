@@ -330,7 +330,8 @@ describe("Acceptance test (build prompt section 12)", { concurrency: false }, ()
 
     assert.equal(explanation.versions.policy_id, "POL-HARDSHIP_REQUEST-1");
     assert.equal(explanation.versions.policy_version, 1);
-    assert.equal(explanation.versions.prompt_version, "1.1");
+    const active_prompt = (await api.get("/resources/prompt_versions")).find((prompt_version) => prompt_version.is_active);
+    assert.equal(explanation.versions.prompt_version, active_prompt.version);
     assert.ok(explanation.versions.model);
     assert.equal(explanation.human_decision.decided_by_name, "Sam Patel");
     assert.equal(explanation.human_decision.decision, "APPROVED");

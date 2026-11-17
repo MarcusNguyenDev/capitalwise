@@ -12,6 +12,8 @@ export interface TranscriptionRequest {
 export interface ResolvedTranscriptionRequest extends TranscriptionRequest {
   model: string;
   timeout_ms: number;
+  // AI_STT_BASE_URL: this capability's own server (empty = the provider's).
+  base_url?: string;
 }
 
 export interface TranscriptionResult {

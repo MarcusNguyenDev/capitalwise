@@ -41,7 +41,9 @@ describe('ThinkBlockFilter', () => {
 
 describe('parseToolArguments', () => {
   it('accepts an object, a JSON string, and turns anything else into {}', () => {
-    expect(parseToolArguments({ card_id: 'CRD-1' })).toEqual({ card_id: 'CRD-1' });
+    expect(parseToolArguments({ card_id: 'CRD-1' })).toEqual({
+      card_id: 'CRD-1',
+    });
     expect(parseToolArguments('{"hours":72}')).toEqual({ hours: 72 });
     expect(parseToolArguments('')).toEqual({});
     expect(parseToolArguments('{broken')).toEqual({});

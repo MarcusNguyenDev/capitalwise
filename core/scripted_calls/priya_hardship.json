@@ -4,17 +4,17 @@
   "customer_id": "CUS-1003",
   "caller_number": "+61491570158",
   "steps": [
-    { "type": "ai", "text": "Hello, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "ai", "text": "Hello, you've reached {{bank_name}}'s AI specialist. This call is recorded." },
     { "type": "tool", "tool_name": "get_caller_context", "args": {} },
     { "type": "ai", "text": "Hi Priya, how can I help you today?" },
     { "type": "customer", "text": "Hi. Um, I lost my job about five weeks ago, and I don't think I can make my home loan repayment next week." },
     { "type": "insight", "intent": "Financial hardship", "sentiment": "DISTRESSED", "summary": "Priya lost her job five weeks ago and is worried about next week's home loan repayment." },
-    { "type": "ai", "text": "I'm really sorry to hear that, Priya, and thank you for calling early. I've sent a notification to your banking app. Could you tap Approve for me?" },
+    { "type": "ai", "text": "I'm really sorry to hear that, Priya, and thank you for calling early. I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line." },
     { "type": "tool", "tool_name": "send_identity_push", "args": {} },
-    { "type": "ai", "text": "Thank you. One moment, I'm just looking at your income and your home loan." },
+    { "type": "ai", "text": "Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_income_summary", "args": {} },
     { "type": "tool", "tool_name": "get_loan_details", "args": { "account_id": "ACC-10031" } },
-    { "type": "ai", "text": "I can see your salary stopped about five weeks ago, and your next repayment of three thousand four hundred and twelve dollars is due in six days. What can you manage at the moment?" },
+    { "type": "ai", "text": "Thanks for holding. I can see your salary stopped about five weeks ago, and your next repayment of three thousand four hundred and twelve dollars is due in six days. What can you manage at the moment?" },
     { "type": "customer", "text": "Honestly, not much. I'm on JobSeeker and my savings are nearly gone. I've got interviews lined up, so maybe three months to get back on my feet?" },
     {
       "type": "await_instruction",
@@ -22,7 +22,7 @@
       "ai_with_instruction": "Priya, I can hear how much pressure you're under, and calling us was exactly the right thing to do. There's also free, confidential help from the National Debt Helpline on 1800 007 007, whenever you'd like to talk it through with someone.",
       "ai_without_instruction": "Thanks for explaining that, Priya. Three months gives us something clear to ask for."
     },
-    { "type": "ai", "text": "One moment while I put your request through." },
+    { "type": "ai", "text": "Thanks, just a moment while I put that through in the system." },
     {
       "type": "tool",
       "tool_name": "propose_action",
@@ -34,7 +34,7 @@
         "soft_signals": { "quotes": ["I lost my job about five weeks ago", "my savings are nearly gone"] }
       }
     },
-    { "type": "ai", "text": "That's lodged. I've asked for a three month pause on your repayments. Your case number is {{propose_action.case_number}}, and {{propose_action.handled_by.name}} from our hardship team is reviewing it." },
+    { "type": "ai", "text": "Thanks for holding. That's lodged. I've asked for a three month pause on your repayments. Your case number is {{propose_action.case_number}}, and {{propose_action.handled_by.name}} from our hardship team is reviewing it." },
     { "type": "ai", "text": "This call counts as your hardship notice. You'll hear back within two business days, and no later than twenty-one days from today. I can't promise the outcome, but you won't need to chase us." },
     { "type": "customer", "text": "Okay. Thank you. That's a real weight off." },
     { "type": "insight", "intent": "Financial hardship", "sentiment": "NEUTRAL", "summary": "Hardship notice recorded and a three month repayment pause requested. Priya knows the case number and the 21 day deadline." },

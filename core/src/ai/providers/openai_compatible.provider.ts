@@ -11,6 +11,7 @@ import {
   TranscriptionResult,
 } from '../types/transcription.type';
 import { decodeOpenAiChatStream } from '../wire/decode_openai_chat_stream.util';
+import { readPcmSampleRate } from '../wire/read_pcm_sample_rate.util';
 import {
   decodeSpeechAudio,
   measureWavDurationSeconds,
@@ -69,10 +70,10 @@ export abstract class OpenAiCompatibleProvider extends AiProvider {
     return this.connection.base_url.length > 0;
   }
 
-  async listModels(timeout_ms: number): Promise<string[]> {
+  async listModels(timeout_ms: number, base_url?: string): Promise<string[]> {
     const response = await sendProviderRequest({
       provider_name: this.provider_name,
-      url: `${this.connection.base_url}/models`,
+      url: `${this.resolveBaseUrl(base_url)}/models`,
       method: 'GET',
       api_key: this.connection.api_key,
       timeout_ms,
@@ -89,7 +90,7 @@ export abstract class OpenAiCompatibleProvider extends AiProvider {
     chat_request: ResolvedChatRequest,
   ): AsyncGenerator<ChatStreamEvent> {
     this.assertSupports(AiCapability.CHAT, chat_request.model);
-    const chat_url = `${this.connection.base_url}/chat/completions`;
+    const chat_url = `${this.resolveBaseUrl(chat_request.base_url)}/chat/completions`;
     const idle_watchdog = new IdleWatchdog(chat_request.timeout_ms);
     const response = await sendProviderRequest({
       provider_name: this.provider_name,
@@ -131,7 +132,7 @@ export abstract class OpenAiCompatibleProvider extends AiProvider {
     this.assertSupports(AiCapability.TRANSCRIBE, transcription_request.model);
     const response = await sendProviderRequest({
       provider_name: this.provider_name,
-      url: `${this.connection.base_url}/audio/transcriptions`,
+      url: `${this.resolveBaseUrl(transcription_request.base_url)}/audio/transcriptions`,
       method: 'POST',
       api_key: this.connection.api_key,
       form_body: this.buildTranscriptionForm(transcription_request),
@@ -151,24 +152,11 @@ export abstract class OpenAiCompatibleProvider extends AiProvider {
     speech_request: ResolvedSpeechRequest,
   ): Promise<SpeechResult> {
     this.assertSupports(AiCapability.SYNTHESIZE, speech_request.model);
-    const response = await sendProviderRequest({
-      provider_name: this.provider_name,
-      url: `${this.connection.base_url}/audio/speech`,
-      method: 'POST',
-      api_key: this.connection.api_key,
-      json_body: {
-        model: speech_request.model,
-        voice: speech_request.voice,
-        input: speech_request.text,
-        speed: speech_request.speed,
-        response_format: 'wav',
-      },
-      timeout_ms: speech_request.timeout_ms,
-      abort_signal: speech_request.abort_signal,
-    });
+    const response = await this.requestSpeech(speech_request);
     const decoded_audio = decodeSpeechAudio(
       Buffer.from(await response.arrayBuffer()),
       speech_request.sample_rate,
+      readPcmSampleRate(response),
     );
     return {
       pcm: decoded_audio.pcm,
@@ -177,6 +165,45 @@ export abstract class OpenAiCompatibleProvider extends AiProvider {
       model: speech_request.model,
       voice: speech_request.voice,
     };
+  }
+
+  // Whether `instructions` (tone guidance) may be sent to /audio/speech.
+  protected readonly supports_speech_instructions: boolean = false;
+
+  protected resolveBaseUrl(base_url_override?: string): string {
+    return base_url_override || this.connection.base_url;
+  }
+
+  // One non-streaming /audio/speech request for a WAV. vLLM overrides it to
+  // stream.
+  protected requestSpeech(
+    speech_request: ResolvedSpeechRequest,
+  ): Promise<Response> {
+    return this.postSpeech(speech_request, { response_format: 'wav' });
+  }
+
+  protected postSpeech(
+    speech_request: ResolvedSpeechRequest,
+    format_fields: Record<string, unknown>,
+  ): Promise<Response> {
+    return sendProviderRequest({
+      provider_name: this.provider_name,
+      url: `${this.resolveBaseUrl(speech_request.base_url)}/audio/speech`,
+      method: 'POST',
+      api_key: this.connection.api_key,
+      json_body: {
+        model: speech_request.model,
+        voice: speech_request.voice,
+        input: speech_request.text,
+        speed: speech_request.speed,
+        ...(this.supports_speech_instructions && speech_request.instructions
+          ? { instructions: speech_request.instructions }
+          : {}),
+        ...format_fields,
+      },
+      timeout_ms: speech_request.timeout_ms,
+      abort_signal: speech_request.abort_signal,
+    });
   }
 
   // Subclasses add their own switches (thinking off, token limit name).

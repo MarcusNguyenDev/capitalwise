@@ -37,6 +37,8 @@ function buildFakeProvider(fake_options: FakeProviderOptions) {
       provider: fake_options.provider_name,
       model: 'm',
     }),
+    openTranscriptionStream: jest.fn().mockReturnValue({ kind: 'stream' }),
+    synthesizeStream: jest.fn().mockReturnValue({ kind: 'speech_stream' }),
     synthesize: jest.fn().mockResolvedValue({
       pcm: new Int16Array(10),
       sample_rate: 24_000,
@@ -70,7 +72,9 @@ function buildAiConfig(config_overrides: Record<string, unknown> = {}) {
       ai_voice: 'bf_emma',
       staff_voice: 'bm_george',
       speed: 1,
+      instructions: '',
       timeout_ms: 20_000,
+      base_url: '',
     },
     health_check_timeout_ms: 2_000,
     ...config_overrides,
@@ -80,6 +84,7 @@ function buildAiConfig(config_overrides: Record<string, unknown> = {}) {
 function buildHarness(
   harness_options: {
     is_ollama_configured?: boolean;
+    is_vllm_configured?: boolean;
     ollama_models?: string[];
     config_overrides?: Record<string, unknown>;
   } = {},
@@ -92,8 +97,13 @@ function buildHarness(
   });
   const vllm = buildFakeProvider({
     provider_name: 'vllm',
-    capabilities: [AiCapability.CHAT, AiCapability.TRANSCRIBE],
-    models: ['qwen3-8b'],
+    capabilities: [
+      AiCapability.CHAT,
+      AiCapability.TRANSCRIBE,
+      AiCapability.SYNTHESIZE,
+    ],
+    is_configured: harness_options.is_vllm_configured ?? true,
+    models: ['qwen3-8b', 'Qwen/Qwen3-TTS'],
   });
   const speaches = buildFakeProvider({
     provider_name: 'speaches',
@@ -202,7 +212,7 @@ describe('AiService', () => {
         config_overrides: {
           synthesize: {
             ...buildAiConfig().synthesize,
-            provider: 'vllm',
+            provider: 'ollama',
           },
         },
       });
@@ -238,7 +248,7 @@ describe('AiService', () => {
       const missing_model = buildHarness({ ollama_models: ['qwen3:1.7b'] });
       const wrong_route = buildHarness({
         config_overrides: {
-          synthesize: { ...buildAiConfig().synthesize, provider: 'vllm' },
+          synthesize: { ...buildAiConfig().synthesize, provider: 'ollama' },
         },
       });
 
@@ -268,9 +278,9 @@ describe('AiService', () => {
         },
       });
 
-      expect((await ai_service.getStatus()).capabilities.chat.is_reachable).toBe(
-        true,
-      );
+      expect(
+        (await ai_service.getStatus()).capabilities.chat.is_reachable,
+      ).toBe(true);
     });
 
     it('caches each provider probe so status polling does not hammer it', async () => {
@@ -281,6 +291,118 @@ describe('AiService', () => {
 
       // Speaches serves two capabilities but is probed once.
       expect(speaches.checkHealth).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('per-capability servers and tone instructions', () => {
+    const TTS_ON_ITS_OWN_SERVER = {
+      synthesize: {
+        ...buildAiConfig().synthesize,
+        provider: 'vllm',
+        model: 'Qwen/Qwen3-TTS',
+        ai_voice: 'vivian',
+        instructions: 'Warm, calm, reassuring bank specialist.',
+        base_url: 'http://tts-gpu.test:8091/v1',
+      },
+    };
+
+    it('sends the capability base URL and default instructions to the configured provider', async () => {
+      const { ai_service, vllm } = buildHarness({
+        is_vllm_configured: false,
+        config_overrides: TTS_ON_ITS_OWN_SERVER,
+      });
+
+      await ai_service.synthesize({ text: 'Thanks for holding.' });
+      await ai_service.synthesize({ text: 'Hi', instructions: 'Cheerful.' });
+
+      expect(vllm.synthesize).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          model: 'Qwen/Qwen3-TTS',
+          voice: 'vivian',
+          instructions: 'Warm, calm, reassuring bank specialist.',
+          base_url: 'http://tts-gpu.test:8091/v1',
+        }),
+      );
+      expect(vllm.synthesize).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ instructions: 'Cheerful.' }),
+      );
+    });
+
+    it('counts a provider with only a capability URL as configured, and probes that server', async () => {
+      const { ai_service, vllm } = buildHarness({
+        is_vllm_configured: false,
+        config_overrides: TTS_ON_ITS_OWN_SERVER,
+      });
+
+      const ai_status = await ai_service.getStatus();
+
+      expect(ai_status.capabilities.synthesize.is_reachable).toBe(true);
+      expect(vllm.checkHealth).toHaveBeenCalledWith(
+        2_000,
+        'http://tts-gpu.test:8091/v1',
+      );
+    });
+
+    it('does not apply the capability URL when a request picks another provider', async () => {
+      const { ai_service, speaches } = buildHarness({
+        config_overrides: TTS_ON_ITS_OWN_SERVER,
+      });
+
+      await ai_service.synthesize({ text: 'Hi' }, { provider: 'speaches' });
+
+      expect(speaches.synthesize).toHaveBeenCalledWith(
+        expect.objectContaining({ base_url: undefined }),
+      );
+    });
+  });
+
+  describe('streams', () => {
+    it('opens the call transcription stream on the transcription provider with its settings', () => {
+      const { ai_service, speaches } = buildHarness();
+
+      ai_service.openTranscriptionStream();
+
+      expect(speaches.openTranscriptionStream).toHaveBeenCalledWith({
+        model: 'Systran/faster-whisper-small.en',
+        language: 'en',
+        timeout_ms: 20_000,
+        base_url: undefined,
+      });
+    });
+
+    it('streams speech from the speech provider with the resolved voice settings', () => {
+      const { ai_service, speaches } = buildHarness();
+
+      ai_service.synthesizeStream({
+        text: 'Thanks for holding.',
+        sample_rate: 24_000,
+      });
+
+      expect(speaches.synthesizeStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'Thanks for holding.',
+          model: 'speaches-ai/Kokoro-82M-v1.0-ONNX',
+          voice: 'bf_emma',
+          sample_rate: 24_000,
+        }),
+      );
+    });
+
+    it('lets one warm-up request wait longer than the configured chat timeout', async () => {
+      const { ai_service, ollama } = buildHarness();
+
+      await drain(
+        ai_service.chat({
+          messages: [{ role: 'user', content: 'hi' }],
+          timeout_ms: 120_000,
+        }),
+      );
+
+      expect(ollama.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ timeout_ms: 120_000 }),
+      );
     });
   });
 

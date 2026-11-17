@@ -1,9 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useMemo } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { toast, Toaster } from "sonner";
 
 const TOAST_VISIBLE_MS = 6000;
+const TOASTER_STYLE = { "--width": "26rem" } as CSSProperties;
 
 export interface ToastMessage {
   title: string;
@@ -15,78 +18,53 @@ export interface ToastMessage {
   is_sticky?: boolean;
 }
 
-interface VisibleToast extends ToastMessage {
-  toast_id: number;
-}
-
-interface ToastContextValue {
+interface ToastApi {
   showToast: (toast_message: ToastMessage) => void;
 }
 
-const ToastContext = createContext<ToastContextValue>({ showToast: () => undefined });
+function showToast(toast_message: ToastMessage): void {
+  const toast_options = {
+    description: toast_message.description,
+    duration: toast_message.is_sticky ? Infinity : TOAST_VISIBLE_MS,
+    action:
+      toast_message.action_label && toast_message.onAction
+        ? { label: toast_message.action_label, onClick: toast_message.onAction }
+        : undefined,
+  };
+  if (toast_message.tone === "success") {
+    toast.success(toast_message.title, toast_options);
+  } else if (toast_message.tone === "error") {
+    toast.error(toast_message.title, toast_options);
+  } else {
+    toast(toast_message.title, toast_options);
+  }
+}
 
-const TONE_CLASS_NAMES = {
-  info: "border-line",
-  success: "border-positive",
-  error: "border-accent",
-};
-
+/** Toasts are announced politely to screen readers and can be reached with Alt+T. */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [visible_toasts, setVisibleToasts] = useState<VisibleToast[]>([]);
-  const next_toast_id_ref = useRef(1);
-
-  const dismissToast = useCallback((toast_id: number) => {
-    setVisibleToasts((current_toasts) => current_toasts.filter((toast) => toast.toast_id !== toast_id));
-  }, []);
-
-  const showToast = useCallback(
-    (toast_message: ToastMessage) => {
-      const toast_id = next_toast_id_ref.current++;
-      setVisibleToasts((current_toasts) => [...current_toasts, { ...toast_message, toast_id }]);
-      if (!toast_message.is_sticky) {
-        setTimeout(() => dismissToast(toast_id), TOAST_VISIBLE_MS);
-      }
-    },
-    [dismissToast],
-  );
-
-  const context_value = useMemo(() => ({ showToast }), [showToast]);
-
   return (
-    <ToastContext.Provider value={context_value}>
+    <>
       {children}
-      <div className="pointer-events-none fixed bottom-6 right-6 z-[60] flex w-[26rem] flex-col gap-3" aria-live="polite">
-        {visible_toasts.map((toast) => (
-          <div
-            key={toast.toast_id}
-            className={`pointer-events-auto animate-slide-in rounded-xl border-l-4 bg-white px-5 py-4 shadow-xl ring-1 ring-line ${TONE_CLASS_NAMES[toast.tone ?? "info"]}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-semibold">{toast.title}</p>
-              <button type="button" aria-label="Dismiss" className="text-xl leading-none text-ink-faint" onClick={() => dismissToast(toast.toast_id)}>
-                ×
-              </button>
-            </div>
-            {toast.description ? <p className="mt-1 text-ink-soft">{toast.description}</p> : null}
-            {toast.action_label ? (
-              <button
-                type="button"
-                className="mt-3 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-dark"
-                onClick={() => {
-                  toast.onAction?.();
-                  dismissToast(toast.toast_id);
-                }}
-              >
-                {toast.action_label}
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
+      <Toaster
+        position="bottom-right"
+        closeButton
+        hotkey={["altKey", "KeyT"]}
+        style={TOASTER_STYLE}
+        toastOptions={{
+          classNames: {
+            toast: "!rounded-lg !border !border-line !bg-white !text-ink !shadow-overlay !font-sans",
+            title: "!text-sm !font-semibold",
+            description: "!text-sm !text-ink-soft",
+            actionButton: "!bg-accent !text-white !font-semibold !rounded-md",
+            success: "[&_[data-icon]]:!text-positive",
+            error: "[&_[data-icon]]:!text-accent",
+          },
+        }}
+      />
+    </>
   );
 }
 
-export function useToast(): ToastContextValue {
-  return useContext(ToastContext);
+export function useToast(): ToastApi {
+  return useMemo(() => ({ showToast }), []);
 }

@@ -17,7 +17,10 @@ export function buildStreamedResponse(
 }
 
 // Splits a text into chunks of the given size.
-export function splitIntoChunks(full_text: string, chunk_size: number): string[] {
+export function splitIntoChunks(
+  full_text: string,
+  chunk_size: number,
+): string[] {
   const chunks: string[] = [];
   for (let offset = 0; offset < full_text.length; offset += chunk_size) {
     chunks.push(full_text.slice(offset, offset + chunk_size));

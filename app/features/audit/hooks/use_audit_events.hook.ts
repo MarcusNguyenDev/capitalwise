@@ -17,9 +17,9 @@ function buildRequestFilter(event_filter: AuditEventFilter): AuditEventFilter {
   return { ...event_filter, call_id: has_complete_call_id ? event_filter.call_id?.trim() : undefined, limit: AUDIT_PAGE_SIZE };
 }
 
-/** The filtered audit stream, reloaded whenever anything happens on the floor. */
-export function useAuditEvents() {
-  const [event_filter, setEventFilter] = useState<AuditEventFilter>({});
+/** The filtered audit stream, reloaded whenever anything happens on the floor. `initial_filter` comes from a deep link. */
+export function useAuditEvents(initial_filter: AuditEventFilter = {}) {
+  const [event_filter, setEventFilter] = useState<AuditEventFilter>(initial_filter);
   const request_filter = buildRequestFilter(event_filter);
   const events_query = useLiveQuery(() => fetchAuditEvents(request_filter), ANY_ACTIVITY_EVENTS, JSON.stringify(request_filter));
 

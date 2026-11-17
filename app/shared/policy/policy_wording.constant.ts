@@ -1,4 +1,4 @@
-import type { PolicyRoute, Recommendation } from "@/shared/types/case.type";
+import type { PolicyRoute } from "@/shared/types/case.type";
 
 export const OPERATOR_SYMBOLS: Record<string, string> = {
   eq: "=",
@@ -31,12 +31,4 @@ export const ROUTE_PHRASES: Record<PolicyRoute, string> = {
   AUTO: "run automatically",
   APPROVE: "send for approval",
   ESCALATE: "escalate to a human specialist",
-};
-
-export const ROUTE_TIERS: Record<PolicyRoute, number> = { AUTO: 1, APPROVE: 2, ESCALATE: 3 };
-
-export const RECOMMENDATION_TONES: Record<Recommendation, "positive" | "accent" | "warning"> = {
-  APPROVE: "positive",
-  DECLINE: "accent",
-  ESCALATE: "warning",
 };

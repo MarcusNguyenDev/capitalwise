@@ -24,7 +24,7 @@ instructions won.
   compare and demo reset.
 - **`core` (port 3001, prefix `/core`)** is the conversation runtime: calls,
   transcript turns, the model's tools, supervisor interventions, OpenAI
-  Realtime session minting, prompts, the simulator, the scripted hero calls
+  the LiveKit voice agent and AI providers, prompts, the simulator, the scripted hero calls
   and the live socket gateway.
 - `core` never queries `bank`. Its tools call `api` over HTTP
   (`API_INTERNAL_URL`). This keeps "the AI proposes" and "policy decides" in
@@ -104,18 +104,69 @@ instructions won.
   two seconds. In Scripted and Live mode the presenter taps Approve on the
   phone.
 
-## Voice
+## Voice (revised: self-hosted pipeline over LiveKit)
 
-- No OpenAI key was available while building, so Live mode is implemented
-  but was not run end to end. Scripted mode and the simulator cover the
-  acceptance test.
-- Scripted hero calls are replayed by the phone page with the browser's
-  `speechSynthesis`, through the same call, turn, tool, policy, notification
-  and audit pipeline as a live call.
-- The phone page on a second device needs HTTPS (or `localhost`) for the
-  browser to allow microphone access. Scripted mode has no such requirement.
+- **OpenAI Realtime was removed** as too expensive. `core` runs its own loop
+  instead: energy-based voice activity detection, speech-to-text, a chat model
+  with tools, and text-to-speech, all through one `AiService`
+  (`core/src/ai/ai.service.ts`) with one provider file per backend (`ollama`,
+  `vllm`, `openai`, `speaches`). Which provider serves chat, speech-to-text
+  and text-to-speech is set in `core/.env`.
+- **The Ollama provider uses Ollama's native `/api/chat`**, not its
+  OpenAI-compatible endpoint, because the native API's `think: false` is the
+  reliable way to turn thinking off. In testing, the compatibility
+  endpoint's `reasoning_effort: none` was ignored by `qwen3:4b`, which then
+  never called a tool.
+- **LiveKit carries all call audio** (phone, voice agent, staff listen-in and
+  takeover talk). The earlier peer connection signalled over socket.io is
+  gone. LiveKit runs in Docker with `--node-ip=127.0.0.1`, which was tested to
+  carry audio between the host and containers and between containers.
+- **Speaches** (Whisper and Kokoro behind an OpenAI-compatible API) is the
+  default speech server, in the root compose file, because it runs on CPU
+  with no setup. On this machine's CPU it transcribed 5.6 s of speech in about
+  2.4 s and spoke 5.6 s in about 1.3 s.
+- **The chat model is not part of the stack.** The owner hosts it (planned:
+  `gpt-6:luna` on Ollama) and sets `OLLAMA_BASE_URL`; until then Live voice
+  reports itself unavailable with the reason. A throwaway Ollama with
+  `qwen3:4b-instruct` was used for testing only.
+- **Hold messages, the greeting and the handover line are deterministic**,
+  pre-rendered at startup in both voices, so they play instantly and say the
+  same thing every time. Prompt version 1.2 tells the model not to announce
+  its own lookups and to write plain speakable sentences. The scripted hero
+  calls and simulations use the same wording.
+- **Typed staff replies during a takeover** are spoken by `core` in a second
+  voice in Live mode, so the phone does not need speech synthesis there.
+  Scripted mode still speaks them in the browser.
+- **The opening is quick:** the greeting plays as soon as the agent joins,
+  `get_caller_context` runs automatically, and the model's prompt is
+  pre-warmed in the background, so the first model reply does not pay a
+  cold-start cost.
+- **Speech-to-text runs one request at a time per call.** If more than three
+  utterances are waiting, new ones are dropped and logged. After a provider
+  error the caller hears an apology at most once every 20 seconds, and a human
+  is requested at most once per call. This came from a test where looping
+  microphone audio flooded the CPU speech server.
+- **There is no server-side echo cancellation.** The phone relies on the
+  browser's echo cancellation, and the energy-based voice detection treats
+  steady noise as speech. A headset is best for a live demo.
+- The phone page on a second device needs `MEDIA_NODE_IP` set to the LAN IP,
+  and https (or a browser flag) for the microphone. Scripted mode has no such
+  requirement.
 - Web fonts are system fonts, not downloaded ones, so the app renders the
   same without a network.
+
+## Configuration
+
+- **Each folder owns its configuration and secrets** (`api/.env`,
+  `core/.env`, `app/.env`); no service reads `../.env`. The root `.env` is
+  only for infrastructure containers. Values the containers are created with
+  (database and cache credentials, the LiveKit key and secret) are therefore
+  written in two places, the root file and the service's own file, and each
+  `.env.example` says which values must match.
+- There is no JWT authentication: staff identity is still the header's
+  switcher, as the build prompt put authentication out of scope. The only
+  JWTs are LiveKit access tokens, signed by `core` with
+  `LIVEKIT_API_SECRET`.
 
 ## Decision pipeline details (`api`)
 
@@ -169,13 +220,9 @@ instructions won.
   call is the one that reacts.
 - Simulated AI turns carry a random 420 to 800 ms response time so the KPI
   has values before any live call.
-- Usage sent from the browser separates cached from non-cached input tokens,
-  and cost uses the per-token prices in `core/.env`.
-- The OpenAI Realtime API was checked against the official documentation
-  while building and is written up in `core/src/voice/README.md`. The docs'
-  newest examples name `gpt-realtime-2.1`; the default here is `gpt-realtime`
-  as the build prompt specified. Model, voice, transcription model and prices
-  are all environment settings.
+- Cost per call is estimated from chat tokens, speech-to-text seconds and
+  text-to-speech characters, using prices in `core/.env` that default to 0
+  for self-hosted models.
 
 ## Web app details
 

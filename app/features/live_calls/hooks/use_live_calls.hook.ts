@@ -10,7 +10,7 @@ import { useLiveSocket } from "@/shared/live/live_socket.provider";
 import { useLiveEvent } from "@/shared/live/use_live_event.hook";
 import type { CallHoldEvent, CallTurn, LiveCall } from "@/shared/types/call.type";
 
-import { ENDED_CALL_LINGER_MS } from "../constants/dashboard.constant";
+import { ENDED_CALL_LINGER_MS } from "../constants/live_calls.constant";
 
 function upsertCall(live_calls: LiveCall[], call: LiveCall): LiveCall[] {
   const is_known = live_calls.some((known_call) => known_call.call_id === call.call_id);

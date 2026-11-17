@@ -4,16 +4,16 @@
   "customer_id": "CUS-3003",
   "caller_number": "+61491575254",
   "steps": [
-    { "type": "ai", "text": "Hi, you've reached {{bank_name}}. I'm the bank's AI specialist, and this call is recorded." },
+    { "type": "ai", "text": "Hello, you've reached {{bank_name}}'s AI specialist. This call is recorded." },
     { "type": "tool", "tool_name": "get_caller_context", "args": {} },
     { "type": "ai", "text": "Hi Ava, how can I help you today?" },
     { "type": "customer", "text": "Hi. I got hit with a fifteen dollar overdrawn fee, and I really can't afford extra charges right now. Can you take it off?" },
     { "type": "insight", "intent": "Fee refund request", "sentiment": "NEGATIVE", "summary": "Ava is asking for a $15 overdrawn fee to be refunded." },
-    { "type": "ai", "text": "I can look at that with you. I've sent a notification to your banking app. Could you tap Approve for me?" },
+    { "type": "ai", "text": "I can look at that with you. I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line." },
     { "type": "tool", "tool_name": "send_identity_push", "args": {} },
-    { "type": "ai", "text": "Thanks Ava. One moment, I'm just checking your fees." },
+    { "type": "ai", "text": "Thanks Ava. Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." },
     { "type": "tool", "tool_name": "get_fee_history", "args": {} },
-    { "type": "ai", "text": "I can see the fifteen dollar overdrawn fee from yesterday. Can you tell me what happened?" },
+    { "type": "ai", "text": "Thanks for holding. I can see the fifteen dollar overdrawn fee from yesterday. Can you tell me what happened?" },
     { "type": "customer", "text": "My rent went out a day before my pay came in. It's been a rough month, honestly. Everything's gone up." },
     { "type": "insight", "intent": "Fee refund request", "sentiment": "DISTRESSED", "summary": "Ava's rent came out before payday and she says it has been a rough month. A supervisor instruction here changes the AI's next line." },
     {
@@ -22,7 +22,7 @@
       "ai_with_instruction": "That sounds like a really hard month, Ava, and I'm sorry this fee landed on top of it. If money stays tight, please tell us, because there's more we can do to help than this one fee.",
       "ai_without_instruction": "Thanks for explaining that, Ava."
     },
-    { "type": "ai", "text": "One moment while I put a refund request through for you." },
+    { "type": "ai", "text": "Thanks, just a moment while I put that through in the system." },
     {
       "type": "tool",
       "tool_name": "propose_action",

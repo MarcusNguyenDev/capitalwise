@@ -1,19 +1,18 @@
 import type { AuditEvent } from "@/shared/types/case.type";
-import type { ChipTone } from "@/shared/ui/chip.component";
-
-export const AUDIT_TABS = [
-  { key: "AUDIT_LOG", label: "Audit log" },
-  { key: "DECISION_EXPLAINER", label: "Decision explainer" },
-  { key: "CALL_REPLAY", label: "Call replay" },
-] as const;
-
-export type AuditTabKey = (typeof AUDIT_TABS)[number]["key"];
+import type { BadgeTone } from "@/shared/ui/badge.component";
 
 export const ACTOR_TYPES: readonly AuditEvent["actor_type"][] = ["AI", "STAFF", "CUSTOMER", "SYSTEM"];
 
-export const ACTOR_TYPE_TONES: Record<AuditEvent["actor_type"], ChipTone> = {
+export const ACTOR_TYPE_LABELS: Record<AuditEvent["actor_type"], string> = {
+  AI: "AI",
+  STAFF: "Staff",
+  CUSTOMER: "Customer",
+  SYSTEM: "System",
+};
+
+export const ACTOR_TYPE_TONES: Record<AuditEvent["actor_type"], BadgeTone> = {
   AI: "info",
-  STAFF: "accent",
+  STAFF: "strong",
   CUSTOMER: "positive",
   SYSTEM: "neutral",
 };

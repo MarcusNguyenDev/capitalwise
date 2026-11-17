@@ -1,8 +1,17 @@
 export interface CallUsage {
+  // llm_input_tokens excludes the cached ones.
   llm_input_tokens: number;
+  llm_cached_input_tokens: number;
   llm_output_tokens: number;
   stt_audio_seconds: number;
+  // Speech billed per character (dedicated TTS models, self-hosted).
   tts_characters: number;
+  // Speech billed per token (an OpenAI Realtime model used as a reader);
+  // tts_input_tokens excludes the cached ones.
+  tts_input_tokens: number;
+  tts_cached_input_tokens: number;
+  tts_output_audio_tokens: number;
+  tts_output_text_tokens: number;
 }
 
 export type CallHoldReason = 'CHECKING_SYSTEM' | 'WAITING_FOR_APP_APPROVAL';
@@ -29,4 +38,6 @@ export interface CallMetrics {
   estimated_cost_usd?: number;
   hold?: CallHoldState | null;
   total_hold_ms?: number;
+  // Lines where the realtime voice did not say what it was asked to.
+  tts_drift_count?: number;
 }

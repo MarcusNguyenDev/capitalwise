@@ -3,15 +3,16 @@ import { Logger } from '@nestjs/common';
 import { AiRequestAbortedError } from '../ai/errors/ai_request_aborted.error';
 import { ChatToolCall } from '../ai/types/chat_request.type';
 import { ChatUsage } from '../ai/types/chat_stream_event.type';
+import { SpeechStream, SpeechSummary } from '../ai/types/speech_stream.type';
+import { TranscriptionResult } from '../ai/types/transcription.type';
 import {
   AGENT_OUTPUT_SAMPLE_RATE,
   CALLER_INPUT_SAMPLE_RATE,
 } from '../audio/constants/call_audio_format.constant';
-import { encodeWav } from '../audio/encode_wav.util';
 import { ToolOutcome } from '../call_tools/types/tool_outcome.type';
 import { CallEndedError } from '../calls/errors/call_ended.error';
 import { CallNotFoundError } from '../calls/errors/call_not_found.error';
-import { CallHoldReason } from '../calls/types/call_metrics.type';
+import { CallHoldReason, CallUsage } from '../calls/types/call_metrics.type';
 import { HOLD_PHRASES } from '../hold_buffer/constants/hold_phrases.constant';
 import {
   classifyToolHold,
@@ -26,6 +27,7 @@ import {
   VoiceActivityEvent,
 } from '../turn_detection/types/voice_activity_event.type';
 import { AgentAudioOutput } from './agent_audio.output';
+import { CallerTranscriber } from './caller.transcriber';
 import {
   AGENT_PHRASES,
   buildGreeting,
@@ -51,6 +53,16 @@ const OPENING_CONTEXT_TOOL_CALL_ID = 'call_opening_caller_context';
 const STALL_CHECK_INTERVAL_MS = 250;
 const SILENCE_FRAME = new Int16Array(CALLER_INPUT_SAMPLE_RATE / 100);
 const MAX_STALL_SILENCE_FRAMES = 300;
+// More utterances than this waiting for speech-to-text means the line is
+// looping noise or the backend is stuck: new ones are dropped meanwhile.
+const MAX_QUEUED_TRANSCRIPTIONS = 3;
+// A failing backend must not make the agent apologise every few seconds.
+const APOLOGY_COOLDOWN_MS = 20_000;
+const IDLE_CHECK_INTERVAL_MS = 1_000;
+const GOODBYE_PLAYOUT_LIMIT_MS = 15_000;
+const PLAYOUT_POLL_MS = 100;
+// A cold language model can take this long to read the prompt once.
+const WARM_UP_TIMEOUT_MS = 120_000;
 const ERROR_HELP_REASON =
   'The AI specialist hit a system problem and could not continue the conversation.';
 
@@ -112,6 +124,16 @@ export class VoiceAgentSession {
   private is_working = false;
   private is_stopped = false;
   private has_requested_help_after_error = false;
+  private last_apology_at_ms = 0;
+  private queued_transcription_count = 0;
+  private caller_transcriber: CallerTranscriber | null = null;
+  // The opening reply waits for it: on a cold model both would otherwise
+  // queue behind each other and time out together.
+  private warm_up_done: Promise<void> = Promise.resolve();
+  // Set by a cost guard: no more model replies on this call.
+  private is_generation_stopped = false;
+  private is_ending = false;
+  private last_activity_at_ms = Date.now();
   private is_reply_owed_after_interruption = false;
 
   constructor(private readonly dependencies: VoiceAgentSessionDependencies) {
@@ -129,6 +151,12 @@ export class VoiceAgentSession {
 
   // Joins the room and waits (in the background) for the customer.
   async start(): Promise<void> {
+    this.caller_transcriber = new CallerTranscriber({
+      call_id: this.call_id,
+      transcription_stream: this.dependencies.ai.openTranscriptionStream(),
+      emitDelta: (delta, item_id) =>
+        this.dependencies.emitTranscriptDelta(delta, item_id, 'CUSTOMER'),
+    });
     await this.dependencies.agent_room.join({
       onCustomerAudioFrame: (frame) => this.handleCallerFrame(frame),
       onCustomerPresenceChanged: (is_present) =>
@@ -140,6 +168,46 @@ export class VoiceAgentSession {
       this.endCallFromAgent('SYSTEM', 'no customer joined within 30 s'),
     );
     this.repeat(STALL_CHECK_INTERVAL_MS, () => this.closeStalledUtterance());
+    this.schedule(
+      this.dependencies.settings.max_call_ms,
+      () =>
+        void this.endWithGoodbye(
+          AGENT_PHRASES.TIME_LIMIT_GOODBYE,
+          'the call reached AI_MAX_LIVE_CALL_MINUTES',
+        ),
+    );
+    this.repeat(IDLE_CHECK_INTERVAL_MS, () => this.hangUpIfIdle());
+    if (this.dependencies.settings.is_prompt_warm_up_enabled) {
+      this.warm_up_done = this.warmUpModel();
+    }
+  }
+
+  // Sends the fixed prefix of every request (system prompt + tools) once
+  // while the caller is still connecting, so a backend with prompt caching
+  // (Ollama, vLLM) has it ready: on a CPU test model the first uncached
+  // prompt takes ~25 s, a cached one ~0.2 s. Failures are ignored.
+  private async warmUpModel(): Promise<void> {
+    const started_at_ms = Date.now();
+    try {
+      const warm_up_stream = this.dependencies.ai.chat({
+        messages: this.history.buildChatMessages(
+          this.dependencies.settings.system_prompt,
+        ),
+        tools: this.dependencies.settings.tools,
+        max_output_tokens: 1,
+        timeout_ms: WARM_UP_TIMEOUT_MS,
+      });
+      for await (const chat_event of warm_up_stream) {
+        void chat_event;
+      }
+      this.logger.log(
+        `Model prompt warmed up for call ${this.call_id} in ${Date.now() - started_at_ms} ms`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Model warm-up for call ${this.call_id} failed: ${describeError(error)}`,
+      );
+    }
   }
 
   handleCommand(voice_agent_command: VoiceAgentCommand): void {
@@ -178,6 +246,8 @@ export class VoiceAgentSession {
     this.timers.clear();
     this.interruptActiveResponse();
     this.audio_output.clear();
+    await this.caller_transcriber?.close().catch(() => undefined);
+    this.dependencies.ai.releaseSpeechSessions();
     try {
       await this.dependencies.agent_room.leave();
     } catch (error) {
@@ -186,6 +256,31 @@ export class VoiceAgentSession {
       );
     }
     this.dependencies.onStopped();
+  }
+
+  // A line the caller typed on the phone instead of saying it. It takes the
+  // path of a transcribed utterance without speech-to-text: it interrupts the
+  // AI (barge-in), counts as caller activity for the idle timer, is recorded
+  // in order after any utterance still being transcribed, and is answered
+  // unless a person has the call or a cost guard stopped the AI. False when
+  // the agent is not listening (stopped, or the caller has not joined yet).
+  acceptTypedCustomerMessage(typed_text: string): boolean {
+    if (this.is_stopped || !this.has_customer_joined) {
+      return false;
+    }
+    const received_at_ms = Date.now();
+    this.last_activity_at_ms = received_at_ms;
+    this.handleSpeechStarted();
+    this.transcription_chain = this.transcription_chain
+      .then(() =>
+        this.recordCustomerText(typed_text, createTurnTiming(received_at_ms)),
+      )
+      .catch((error) =>
+        this.logger.error(
+          `Recording a typed customer turn on call ${this.call_id} failed: ${describeError(error)}`,
+        ),
+      );
+    return true;
   }
 
   // ── Customer presence and audio ──────────────────────────────────────────
@@ -216,6 +311,7 @@ export class VoiceAgentSession {
       return;
     }
     this.last_caller_frame_at_ms = Date.now();
+    this.caller_transcriber?.pushFrame(frame);
     const voice_activity_events =
       this.dependencies.voice_activity_detector.pushFrame(frame);
     voice_activity_events.forEach((voice_activity_event) =>
@@ -224,11 +320,14 @@ export class VoiceAgentSession {
   }
 
   private handleVoiceActivity(voice_activity_event: VoiceActivityEvent): void {
+    this.last_activity_at_ms = Date.now();
     if (voice_activity_event.type === 'speech_started') {
+      this.caller_transcriber?.beginTurn();
       this.handleSpeechStarted();
     } else if (voice_activity_event.type === 'utterance_ended') {
       this.handleUtterance(voice_activity_event, Date.now());
     } else {
+      this.caller_transcriber?.discardTurn();
       this.resumeAfterFalseInterruption();
     }
   }
@@ -272,19 +371,39 @@ export class VoiceAgentSession {
     this.audio_output.clearInterruptible();
   }
 
+  // The turn is committed at once (its audio was streamed while the caller
+  // spoke); results are recorded in order.
   private handleUtterance(
     utterance: UtteranceEndedEvent,
     end_of_speech_at_ms: number,
   ): void {
-    const transcription_promise = this.transcribeUtterance(utterance);
+    if (
+      !this.caller_transcriber ||
+      this.queued_transcription_count >= MAX_QUEUED_TRANSCRIPTIONS
+    ) {
+      this.caller_transcriber?.discardTurn();
+      this.logger.warn(
+        `Dropped an utterance on call ${this.call_id}: ${this.queued_transcription_count} are still waiting for speech-to-text`,
+      );
+      return;
+    }
+    this.queued_transcription_count += 1;
+    const committed_at_ms = Date.now();
+    const transcription_promise = this.caller_transcriber.commitTurn();
+    transcription_promise.catch(() => undefined);
     this.transcription_chain = this.transcription_chain
-      .then(() =>
-        this.recordCustomerUtterance(
+      .then(async () => {
+        const transcription = await this.transcribeUtterance(
           transcription_promise,
+          committed_at_ms,
+        );
+        this.queued_transcription_count -= 1;
+        await this.recordCustomerUtterance(
+          transcription,
           utterance,
           end_of_speech_at_ms,
-        ),
-      )
+        );
+      })
       .catch((error) =>
         this.logger.error(
           `Recording a customer turn on call ${this.call_id} failed: ${describeError(error)}`,
@@ -293,19 +412,20 @@ export class VoiceAgentSession {
   }
 
   private async transcribeUtterance(
-    utterance: UtteranceEndedEvent,
+    transcription_promise: Promise<TranscriptionResult>,
+    committed_at_ms: number,
   ): Promise<{ text: string; stt_ms: number } | null> {
-    const started_at_ms = Date.now();
     try {
-      const transcription_result = await this.dependencies.ai.transcribe({
-        audio: encodeWav(utterance.pcm, CALLER_INPUT_SAMPLE_RATE),
-      });
+      const transcription_result = await transcription_promise;
+      if (this.is_stopped) {
+        return null;
+      }
       this.recordUsageQuietly({
         stt_audio_seconds: transcription_result.duration_seconds,
       });
       return {
         text: transcription_result.text,
-        stt_ms: Date.now() - started_at_ms,
+        stt_ms: Date.now() - committed_at_ms,
       };
     } catch (error) {
       if (!this.is_stopped) {
@@ -316,11 +436,10 @@ export class VoiceAgentSession {
   }
 
   private async recordCustomerUtterance(
-    transcription_promise: Promise<{ text: string; stt_ms: number } | null>,
+    transcription: { text: string; stt_ms: number } | null,
     utterance: UtteranceEndedEvent,
     end_of_speech_at_ms: number,
   ): Promise<void> {
-    const transcription = await transcription_promise;
     if (this.is_stopped || !transcription) {
       return;
     }
@@ -331,17 +450,26 @@ export class VoiceAgentSession {
       this.resumeAfterFalseInterruption();
       return;
     }
+    await this.recordCustomerText(
+      transcription.text,
+      createTurnTiming(end_of_speech_at_ms, transcription.stt_ms),
+    );
+  }
+
+  // One customer turn, spoken or typed: recorded and emitted, then answered
+  // unless a person has the call.
+  private async recordCustomerText(
+    customer_text: string,
+    turn_timing: TurnTiming,
+  ): Promise<void> {
+    if (this.is_stopped) {
+      return;
+    }
     // What the AI said before being cut off comes first in the transcript.
     await this.interrupted_reply_recorded;
-    await this.addTurnQuietly({
-      speaker: 'CUSTOMER',
-      text: transcription.text,
-    });
+    await this.addTurnQuietly({ speaker: 'CUSTOMER', text: customer_text });
     this.is_reply_owed_after_interruption = false;
-    this.pending_customer_messages.push({
-      text: transcription.text,
-      turn_timing: createTurnTiming(end_of_speech_at_ms, transcription.stt_ms),
-    });
+    this.pending_customer_messages.push({ text: customer_text, turn_timing });
     if (this.is_human_active) {
       this.movePendingCustomerMessagesToHistory();
       return;
@@ -389,6 +517,7 @@ export class VoiceAgentSession {
     });
     this.addToolResult(context_call, context_outcome);
     await greeting_done;
+    await this.warm_up_done;
     await this.respond(createTurnTiming());
   }
 
@@ -402,7 +531,7 @@ export class VoiceAgentSession {
 
   private async respond(turn_timing: TurnTiming): Promise<void> {
     let tool_round_count = 0;
-    while (this.canSpeak()) {
+    while (this.canSpeak() && !this.is_generation_stopped) {
       const tool_calls = await this.runModelRound(turn_timing);
       if (!tool_calls || tool_calls.length === 0) {
         return;
@@ -458,7 +587,7 @@ export class VoiceAgentSession {
         }
         if (chat_event.type === 'text_delta') {
           active_response.speaker.pushText(chat_event.text);
-          this.dependencies.emitTranscriptDelta(chat_event.text, item_id);
+          this.dependencies.emitTranscriptDelta(chat_event.text, item_id, 'AI');
         } else if (chat_event.type === 'tool_call') {
           tool_calls.push(chat_event);
         } else {
@@ -512,27 +641,82 @@ export class VoiceAgentSession {
     if (this.active_response === active_response) {
       this.active_response = null;
     }
+    const cached_input_tokens = usage?.cached_input_tokens ?? 0;
     this.recordUsageQuietly({
-      llm_input_tokens: usage?.input_tokens ?? 0,
+      // Providers report prompt tokens including the cached ones.
+      llm_input_tokens: Math.max(
+        (usage?.input_tokens ?? 0) - cached_input_tokens,
+        0,
+      ),
+      llm_cached_input_tokens: cached_input_tokens,
       llm_output_tokens: usage?.output_tokens ?? 0,
       tts_characters: active_response.speaker.character_count,
     });
   }
 
-  private async synthesizeReplyChunk(
+  private synthesizeReplyChunk(
     spoken_text: string,
     abort_signal: AbortSignal,
     turn_timing: TurnTiming,
-  ): Promise<Int16Array> {
+  ): SpeechStream {
     const started_at_ms = Date.now();
-    const speech_result = await this.dependencies.ai.synthesize({
+    const speech_stream = this.dependencies.ai.synthesizeStream({
       text: spoken_text,
       voice: this.dependencies.settings.ai_voice,
       sample_rate: AGENT_OUTPUT_SAMPLE_RATE,
       abort_signal,
+      session_key: this.call_id,
     });
-    turn_timing.tts_first_chunk_ms ??= Date.now() - started_at_ms;
-    return speech_result.pcm;
+    this.watchSpeechSummary(speech_stream);
+    const logger = this.logger;
+    const call_id = this.call_id;
+    return {
+      summary: speech_stream.summary,
+      async *[Symbol.asyncIterator](): AsyncGenerator<Int16Array> {
+        for await (const speech_pcm of speech_stream) {
+          if (turn_timing.tts_first_chunk_ms === null) {
+            turn_timing.tts_first_chunk_ms = Date.now() - started_at_ms;
+            logger.log(
+              `Speech timing call=${call_id} tts_first_chunk_ms=${turn_timing.tts_first_chunk_ms}`,
+            );
+          }
+          yield speech_pcm;
+        }
+      },
+    };
+  }
+
+  // Realtime voices are billed per token and may stray from the text: the
+  // usage is recorded and a line that drifted is logged and counted. The
+  // transcript always keeps the text we asked for.
+  private watchSpeechSummary(speech_stream: SpeechStream): void {
+    speech_stream.summary
+      .then((speech_summary) => this.handleSpeechSummary(speech_summary))
+      .catch(() => undefined);
+  }
+
+  private handleSpeechSummary(speech_summary: SpeechSummary): void {
+    if (speech_summary.usage) {
+      this.recordUsageQuietly({
+        tts_input_tokens: speech_summary.usage.input_text_tokens,
+        tts_cached_input_tokens: speech_summary.usage.cached_input_tokens,
+        tts_output_audio_tokens: speech_summary.usage.output_audio_tokens,
+        tts_output_text_tokens: speech_summary.usage.output_text_tokens,
+      });
+    }
+    if (!speech_summary.is_drifted) {
+      return;
+    }
+    this.logger.warn(
+      `Voice drift on call ${this.call_id}: asked "${speech_summary.requested_text}", the voice said "${speech_summary.spoken_transcript}"`,
+    );
+    this.dependencies.calls
+      .recordTtsDrift(this.call_id)
+      .catch((error) =>
+        this.logger.debug(
+          `Drift not recorded on call ${this.call_id}: ${describeError(error)}`,
+        ),
+      );
   }
 
   private async handleRoundFailure(
@@ -797,18 +981,23 @@ export class VoiceAgentSession {
       return;
     }
     try {
-      const speech_result = await this.dependencies.ai.synthesize({
+      const speech_stream = this.dependencies.ai.synthesizeStream({
         text: staff_text,
         voice: this.dependencies.settings.staff_voice,
         sample_rate: AGENT_OUTPUT_SAMPLE_RATE,
+        session_key: this.call_id,
       });
-      this.recordUsageQuietly({ tts_characters: staff_text.length });
-      if (!this.is_stopped) {
-        await this.audio_output.enqueue({
-          pcm: speech_result.pcm,
+      this.watchSpeechSummary(speech_stream);
+      for await (const speech_pcm of speech_stream) {
+        if (this.is_stopped) {
+          return;
+        }
+        void this.audio_output.enqueue({
+          pcm: speech_pcm,
           is_interruptible: false,
         });
       }
+      this.recordUsageQuietly({ tts_characters: staff_text.length });
     } catch (error) {
       this.logger.error(
         `Speaking a staff message on call ${this.call_id} failed: ${describeError(error)}`,
@@ -856,9 +1045,13 @@ export class VoiceAgentSession {
     this.logger.error(
       `Voice agent ${stage} failed on call ${this.call_id}: ${describeError(error)}`,
     );
-    if (!this.canSpeak()) {
+    if (
+      !this.canSpeak() ||
+      Date.now() - this.last_apology_at_ms < APOLOGY_COOLDOWN_MS
+    ) {
       return;
     }
+    this.last_apology_at_ms = Date.now();
     await this.playFixedLine(AGENT_PHRASES.TROUBLE_APOLOGY, {
       turn_timing: null,
     });
@@ -977,19 +1170,103 @@ export class VoiceAgentSession {
     }
   }
 
-  private recordUsageQuietly(usage: {
-    llm_input_tokens?: number;
-    llm_output_tokens?: number;
-    stt_audio_seconds?: number;
-    tts_characters?: number;
-  }): void {
+  private recordUsageQuietly(usage: Partial<CallUsage>): void {
     this.dependencies.calls
       .recordUsage(this.call_id, usage)
+      .then((estimated_cost_usd) => this.checkCallBudget(estimated_cost_usd))
       .catch((error) =>
         this.logger.debug(
           `Usage not recorded on call ${this.call_id}: ${describeError(error)}`,
         ),
       );
+  }
+
+  // ── Cost guards ──────────────────────────────────────────────────────────
+
+  // AI_MAX_CALL_COST_USD: past it the agent stops generating, apologises and
+  // asks for a person (fixed lines come from the phrase cache, at no cost).
+  private checkCallBudget(estimated_cost_usd: number): void {
+    if (
+      this.is_generation_stopped ||
+      estimated_cost_usd < this.dependencies.settings.max_call_cost_usd
+    ) {
+      return;
+    }
+    this.is_generation_stopped = true;
+    this.logger.warn(
+      `Call ${this.call_id} reached its AI budget (${estimated_cost_usd} USD >= ${this.dependencies.settings.max_call_cost_usd} USD): the AI stops generating`,
+    );
+    this.interruptActiveResponse();
+    this.enqueueWork(() => this.handOverForBudget());
+  }
+
+  private async handOverForBudget(): Promise<void> {
+    if (this.is_human_active || this.is_stopped) {
+      return;
+    }
+    await this.playFixedLine(AGENT_PHRASES.TROUBLE_APOLOGY, {
+      turn_timing: null,
+    });
+    const help_call: ChatToolCall = {
+      tool_call_id: `call_budget_help_${this.response_count}`,
+      name: 'request_human',
+      arguments: {
+        reason: 'The AI specialist reached its cost limit for this call.',
+      },
+    };
+    this.addToolResult(help_call, await this.dispatchToolQuietly(help_call));
+  }
+
+  // AI_IDLE_HANGUP_SECONDS: the caller has said nothing while the agent had
+  // nothing in progress. A human on the call or a hold never counts as idle.
+  private hangUpIfIdle(): void {
+    if (!this.has_customer_joined || this.is_ending || this.is_stopped) {
+      return;
+    }
+    const is_busy =
+      this.is_human_active ||
+      this.is_on_hold ||
+      this.is_working ||
+      this.active_response !== null ||
+      this.audio_output.is_playing ||
+      this.queued_transcription_count > 0 ||
+      this.dependencies.voice_activity_detector.is_in_speech;
+    if (is_busy) {
+      this.last_activity_at_ms = Date.now();
+      return;
+    }
+    if (
+      Date.now() - this.last_activity_at_ms >=
+      this.dependencies.settings.idle_hangup_ms
+    ) {
+      void this.endWithGoodbye(
+        AGENT_PHRASES.IDLE_GOODBYE,
+        'the caller was silent for AI_IDLE_HANGUP_SECONDS',
+      );
+    }
+  }
+
+  private async endWithGoodbye(
+    goodbye_line: string,
+    end_reason: string,
+  ): Promise<void> {
+    if (this.is_ending || this.is_stopped) {
+      return;
+    }
+    this.is_ending = true;
+    this.is_generation_stopped = true;
+    this.interruptActiveResponse();
+    this.audio_output.clearInterruptible();
+    await this.playFixedLine(goodbye_line, { turn_timing: null });
+    await this.waitForPlayout(GOODBYE_PLAYOUT_LIMIT_MS);
+    await this.endCallFromAgent('SYSTEM', end_reason);
+  }
+
+  private async waitForPlayout(limit_ms: number): Promise<void> {
+    const deadline_ms = Date.now() + limit_ms;
+    while (this.audio_output.is_playing && Date.now() < deadline_ms) {
+      await new Promise((resolve) => setTimeout(resolve, PLAYOUT_POLL_MS));
+    }
   }
 
   // ── Scheduling ───────────────────────────────────────────────────────────

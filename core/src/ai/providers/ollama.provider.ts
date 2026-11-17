@@ -72,10 +72,10 @@ export class OllamaProvider extends AiProvider {
     return this.connection.base_url.length > 0;
   }
 
-  async listModels(timeout_ms: number): Promise<string[]> {
+  async listModels(timeout_ms: number, base_url?: string): Promise<string[]> {
     const response = await sendProviderRequest({
       provider_name: this.provider_name,
-      url: `${this.connection.base_url}/api/tags`,
+      url: `${this.resolveBaseUrl(base_url)}/api/tags`,
       method: 'GET',
       api_key: this.connection.api_key,
       timeout_ms,
@@ -91,7 +91,7 @@ export class OllamaProvider extends AiProvider {
   async *chat(
     chat_request: ResolvedChatRequest,
   ): AsyncGenerator<ChatStreamEvent> {
-    const chat_url = `${this.connection.base_url}/api/chat`;
+    const chat_url = `${this.resolveBaseUrl(chat_request.base_url)}/api/chat`;
     const idle_watchdog = new IdleWatchdog(chat_request.timeout_ms);
     const response = await sendProviderRequest({
       provider_name: this.provider_name,
@@ -125,6 +125,12 @@ export class OllamaProvider extends AiProvider {
     } finally {
       idle_watchdog.stop();
     }
+  }
+
+  private resolveBaseUrl(base_url_override?: string): string {
+    return base_url_override
+      ? normaliseNativeBaseUrl(base_url_override)
+      : this.connection.base_url;
   }
 
   private buildChatBody(

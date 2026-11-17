@@ -584,8 +584,8 @@ describe('api decision pipeline (e2e)', () => {
           months: 3,
         },
         assigned_staff_name: 'Sam Patel',
-        model: 'gpt-realtime',
-        prompt_version: '1.1',
+        model: 'self-hosted-llm',
+        prompt_version: '1.3',
       });
       expect(
         pack_response.body.evidence
@@ -740,8 +740,8 @@ describe('api decision pipeline (e2e)', () => {
         reason: 'Verified income loss and imminent repayment',
       });
       expect(explanation.versions).toEqual({
-        model: 'gpt-realtime',
-        prompt_version: '1.1',
+        model: 'self-hosted-llm',
+        prompt_version: '1.3',
         policy_id: 'POL-HARDSHIP_REQUEST-1',
         policy_version: 1,
         policy_approved_by: 'STF-01',
@@ -1308,7 +1308,7 @@ describe('api decision pipeline (e2e)', () => {
         prompts_response.body.map(
           (prompt: { version: string }) => prompt.version,
         ),
-      ).toEqual(['1.1', '1.0']);
+      ).toEqual(['1.3', '1.2', '1.1', '1.0']);
 
       const compare_response = await api().get('/api/compare').expect(200);
       expect(compare_response.body.legacy_journey.steps).toHaveLength(5);

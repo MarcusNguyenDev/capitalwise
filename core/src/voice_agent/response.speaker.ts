@@ -1,16 +1,18 @@
+import { SpeechStream } from '../ai/types/speech_stream.type';
 import { AgentAudioOutput } from './agent_audio.output';
 import { makeSpeakableText } from './make_speakable_text.util';
 import { SentenceChunker } from './sentence.chunker';
 
 export interface ResponseSpeakerDependencies {
   audio_output: AgentAudioOutput;
-  // Text to 24 kHz PCM in the AI voice.
-  synthesizeSpeech: (spoken_text: string) => Promise<Int16Array>;
+  // Text to 24 kHz PCM chunks in the AI voice, as they are produced.
+  synthesizeSpeech: (spoken_text: string) => SpeechStream;
 }
 
 // Speaks one model response while it streams: text goes through the
 // sentence chunker, each chunk is synthesised in order (chunk N+1 is
-// rendered while chunk N plays) and queued on the agent's track.
+// rendered while chunk N plays), and its audio is queued on the agent's
+// track piece by piece as the voice produces it.
 export class ResponseSpeaker {
   private readonly sentence_chunker = new SentenceChunker();
   private readonly started_chunks: string[] = [];
@@ -81,23 +83,32 @@ export class ResponseSpeaker {
       return;
     }
     try {
-      const speech_pcm = await this.dependencies.synthesizeSpeech(spoken_text);
-      this.synthesized_character_count += spoken_text.length;
-      if (this.is_cancelled) {
-        return;
-      }
-      const started_promise = this.dependencies.audio_output.enqueue({
-        pcm: speech_pcm,
-        is_interruptible: true,
-      });
-      void started_promise.then((started_at_ms) => {
-        if (started_at_ms !== null) {
-          this.started_chunks.push(spoken_text);
+      const speech_stream = this.dependencies.synthesizeSpeech(spoken_text);
+      let is_first_piece = true;
+      for await (const speech_pcm of speech_stream) {
+        if (this.is_cancelled) {
+          return;
         }
-      });
-      this.first_audio_promise ??= started_promise;
+        const started_promise = this.dependencies.audio_output.enqueue({
+          pcm: speech_pcm,
+          is_interruptible: true,
+        });
+        if (is_first_piece) {
+          is_first_piece = false;
+          void started_promise.then((started_at_ms) => {
+            if (started_at_ms !== null) {
+              this.started_chunks.push(spoken_text);
+            }
+          });
+          this.first_audio_promise ??= started_promise;
+        }
+      }
+      this.synthesized_character_count += spoken_text.length;
     } catch (error) {
-      this.synthesis_error = error;
+      // A cancelled request ends with an abort error: that is not a failure.
+      if (!this.is_cancelled) {
+        this.synthesis_error = error;
+      }
     }
   }
 }

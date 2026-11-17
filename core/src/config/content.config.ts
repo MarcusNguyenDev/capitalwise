@@ -12,4 +12,8 @@ export const contentConfig = registerAs('content', () => ({
     process.env.SIMULATIONS_DIR ?? resolve(CORE_ROOT_DIR, 'simulations'),
   scripted_calls_dir:
     process.env.SCRIPTED_CALLS_DIR ?? resolve(CORE_ROOT_DIR, 'scripted_calls'),
+  // Rendered fixed phrases survive restarts here (gitignored).
+  phrase_audio_cache_dir:
+    process.env.PHRASE_AUDIO_CACHE_DIR ??
+    resolve(CORE_ROOT_DIR, '.cache', 'phrase_audio'),
 }));

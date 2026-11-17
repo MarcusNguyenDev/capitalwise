@@ -24,11 +24,20 @@ import {
 import { ChatRequest } from './types/chat_request.type';
 import { ChatStreamEvent } from './types/chat_stream_event.type';
 import { ProviderHealth } from './types/provider_health.type';
-import { SpeechRequest, SpeechResult } from './types/speech_synthesis.type';
+import { SpeechStream } from './types/speech_stream.type';
+import {
+  ResolvedSpeechRequest,
+  SpeechRequest,
+  SpeechResult,
+} from './types/speech_synthesis.type';
 import {
   TranscriptionRequest,
   TranscriptionResult,
 } from './types/transcription.type';
+import {
+  TranscriptionStream,
+  TranscriptionStreamRequest,
+} from './types/transcription_stream.type';
 
 const HEALTH_CACHE_TTL_MS = 15_000;
 const LISTED_MODEL_PREVIEW_COUNT = 6;
@@ -68,7 +77,9 @@ function isModelListed(models: string[], model: string): boolean {
 @Injectable()
 export class AiService implements OnModuleInit {
   private readonly logger = new Logger(AiService.name);
-  private readonly health_cache = new Map<AiProviderName, CachedHealth>();
+  // Keyed by provider and server, so one capability's own server
+  // (AI_*_BASE_URL) is probed separately.
+  private readonly health_cache = new Map<string, CachedHealth>();
 
   constructor(
     @Inject(AI_PROVIDER_REGISTRY)
@@ -107,8 +118,9 @@ export class AiService implements OnModuleInit {
       temperature: chat_request.temperature ?? chat_settings.temperature,
       max_output_tokens:
         chat_request.max_output_tokens ?? chat_settings.max_output_tokens,
-      timeout_ms: chat_settings.timeout_ms,
+      timeout_ms: chat_request.timeout_ms ?? chat_settings.timeout_ms,
       reasoning_effort: chat_settings.reasoning_effort,
+      base_url: this.readCapabilityBaseUrl(AiCapability.CHAT, provider),
     });
   }
 
@@ -128,6 +140,7 @@ export class AiService implements OnModuleInit {
         transcription_request.language ??
         (transcribe_settings.language || undefined),
       timeout_ms: transcribe_settings.timeout_ms,
+      base_url: this.readCapabilityBaseUrl(AiCapability.TRANSCRIBE, provider),
     });
   }
 
@@ -139,14 +152,96 @@ export class AiService implements OnModuleInit {
       AiCapability.SYNTHESIZE,
       provider_override.provider,
     );
+    return provider.synthesize(
+      this.resolveSpeechRequest(speech_request, provider),
+    );
+  }
+
+  // Speech as PCM chunks while it is produced (one chunk for providers that
+  // only return whole clips).
+  synthesizeStream(
+    speech_request: SpeechRequest,
+    provider_override: AiProviderOverride = {},
+  ): SpeechStream {
+    const provider = this.resolveProvider(
+      AiCapability.SYNTHESIZE,
+      provider_override.provider,
+    );
+    return provider.synthesizeStream(
+      this.resolveSpeechRequest(speech_request, provider),
+    );
+  }
+
+  // Closes the speech connections a call kept open (call ended).
+  releaseSpeechSessions(session_key: string): void {
+    this.provider_registry.forEach((provider) =>
+      provider.releaseSessions(session_key),
+    );
+  }
+
+  // What a fixed phrase is rendered with, to key the on-disk phrase cache.
+  // `server` is part of the route so audio rendered by one server (a fake
+  // test server, a self-hosted model, the real API) is never reused as if
+  // another server had rendered it.
+  describeSpeechRoute(): {
+    provider: string;
+    server: string;
+    model: string;
+    speed: number;
+    instructions: string;
+  } {
     const synthesize_settings = this.ai_config.synthesize;
-    return provider.synthesize({
+    const provider_connection =
+      this.ai_config.providers[
+        synthesize_settings.provider as keyof typeof this.ai_config.providers
+      ];
+    return {
+      provider: synthesize_settings.provider,
+      server:
+        synthesize_settings.base_url || provider_connection?.base_url || '',
+      model: synthesize_settings.model,
+      speed: synthesize_settings.speed,
+      instructions: synthesize_settings.instructions,
+    };
+  }
+
+  // A whole call's speech-to-text: audio in while the caller talks, one
+  // commit per turn.
+  openTranscriptionStream(
+    stream_request: TranscriptionStreamRequest = {},
+    provider_override: AiProviderOverride = {},
+  ): TranscriptionStream {
+    const provider = this.resolveProvider(
+      AiCapability.TRANSCRIBE,
+      provider_override.provider,
+    );
+    const transcribe_settings = this.ai_config.transcribe;
+    return provider.openTranscriptionStream({
+      ...stream_request,
+      model: stream_request.model || transcribe_settings.model,
+      language:
+        stream_request.language ?? (transcribe_settings.language || undefined),
+      timeout_ms: transcribe_settings.timeout_ms,
+      base_url: this.readCapabilityBaseUrl(AiCapability.TRANSCRIBE, provider),
+    });
+  }
+
+  private resolveSpeechRequest(
+    speech_request: SpeechRequest,
+    provider: AiProvider,
+  ): ResolvedSpeechRequest {
+    const synthesize_settings = this.ai_config.synthesize;
+    return {
       ...speech_request,
       model: speech_request.model || synthesize_settings.model,
       voice: speech_request.voice || synthesize_settings.ai_voice,
       speed: speech_request.speed ?? synthesize_settings.speed,
+      instructions:
+        speech_request.instructions ??
+        (synthesize_settings.instructions || undefined),
       timeout_ms: synthesize_settings.timeout_ms,
-    });
+      base_url: this.readCapabilityBaseUrl(AiCapability.SYNTHESIZE, provider),
+    };
   }
 
   async listModels(provider_name: string): Promise<string[]> {
@@ -210,6 +305,27 @@ export class AiService implements OnModuleInit {
     return provider;
   }
 
+  // AI_CHAT_BASE_URL / AI_STT_BASE_URL / AI_TTS_BASE_URL: a capability's own
+  // server. It applies only to the provider configured for that capability
+  // (a try-it request that picks another provider uses that provider's URL).
+  private readCapabilityBaseUrl(
+    capability: AiCapability,
+    provider: AiProvider,
+  ): string | undefined {
+    if (
+      provider.provider_name !== this.readConfiguredProviderName(capability)
+    ) {
+      return undefined;
+    }
+    const capability_base_url =
+      capability === AiCapability.CHAT
+        ? this.ai_config.chat.base_url
+        : capability === AiCapability.TRANSCRIBE
+          ? this.ai_config.transcribe.base_url
+          : this.ai_config.synthesize.base_url;
+    return capability_base_url || undefined;
+  }
+
   private resolveProvider(
     capability: AiCapability,
     provider_name_override?: string,
@@ -220,7 +336,10 @@ export class AiService implements OnModuleInit {
     if (!provider.supports(capability)) {
       throw new CapabilityNotSupportedError(provider.provider_name, capability);
     }
-    if (!provider.isConfigured()) {
+    if (
+      !provider.isConfigured() &&
+      !this.readCapabilityBaseUrl(capability, provider)
+    ) {
       throw new AiProviderNotConfiguredError(
         `${CAPABILITY_LABELS[capability]} provider ${provider.provider_name} is not configured. Set ${provider.configuration_hint} in core/.env.`,
       );
@@ -241,7 +360,10 @@ export class AiService implements OnModuleInit {
     if (!provider.supports(capability)) {
       return `${label} provider ${provider_name} does not support ${capability}. Choose another ${CAPABILITY_ENV_KEYS[capability]}.`;
     }
-    if (!provider.isConfigured()) {
+    if (
+      !provider.isConfigured() &&
+      !this.readCapabilityBaseUrl(capability, provider)
+    ) {
       return `${label} provider ${provider_name} is not configured. Set ${provider.configuration_hint} in core/.env.`;
     }
     return null;
@@ -263,6 +385,12 @@ export class AiService implements OnModuleInit {
     }
     const provider_health = await this.checkProviderHealth(
       provider_name as AiProviderName,
+      this.readCapabilityBaseUrl(
+        capability,
+        this.provider_registry.get(
+          provider_name as AiProviderName,
+        ) as AiProvider,
+      ),
     );
     return {
       provider: provider_name,
@@ -298,8 +426,10 @@ export class AiService implements OnModuleInit {
 
   private checkProviderHealth(
     provider_name: AiProviderName,
+    base_url: string | undefined,
   ): Promise<ProviderHealth> {
-    const cached_health = this.health_cache.get(provider_name);
+    const cache_key = `${provider_name} ${base_url ?? ''}`;
+    const cached_health = this.health_cache.get(cache_key);
     if (
       cached_health &&
       Date.now() - cached_health.checked_at_ms < HEALTH_CACHE_TTL_MS
@@ -309,8 +439,9 @@ export class AiService implements OnModuleInit {
     const provider = this.provider_registry.get(provider_name) as AiProvider;
     const health_promise = provider.checkHealth(
       this.ai_config.health_check_timeout_ms,
+      base_url,
     );
-    this.health_cache.set(provider_name, {
+    this.health_cache.set(cache_key, {
       checked_at_ms: Date.now(),
       health_promise,
     });

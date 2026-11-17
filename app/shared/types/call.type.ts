@@ -99,6 +99,11 @@ export interface CallDetail {
   interventions: Intervention[];
 }
 
+/** `core` took a line the caller typed; the voice agent records and answers it like speech. */
+export interface CustomerMessageReceipt {
+  is_accepted: true;
+}
+
 export interface TranscriptDelta {
   call_id: string;
   speaker: "CUSTOMER" | "AI";

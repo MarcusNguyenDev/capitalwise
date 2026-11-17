@@ -40,8 +40,15 @@ function renderFrames(audio_segments: AudioSegment[]): Int16Array[] {
     const frame_count = audio_segment.duration_ms / 10;
     for (let frame_index = 0; frame_index < frame_count; frame_index++) {
       const frame = new Int16Array(SAMPLES_PER_FRAME);
-      for (let sample_index = 0; sample_index < SAMPLES_PER_FRAME; sample_index++) {
-        const noise = readNoise() * 2 * (audio_segment.kind === 'silence' ? audio_segment.level ?? 60 : 60);
+      for (
+        let sample_index = 0;
+        sample_index < SAMPLES_PER_FRAME;
+        sample_index++
+      ) {
+        const noise =
+          readNoise() *
+          2 *
+          (audio_segment.kind === 'silence' ? (audio_segment.level ?? 60) : 60);
         const voice =
           audio_segment.kind === 'speech'
             ? Math.sin((2 * Math.PI * 180 * sample_clock) / SAMPLE_RATE) *
@@ -181,7 +188,9 @@ describe('EnergyVoiceActivityDetector', () => {
 
     const [utterance] = findUtterances(events);
     expect(utterance.is_truncated).toBe(true);
-    expect((utterance.pcm.length / SAMPLE_RATE) * 1000).toBeLessThanOrEqual(2_000);
+    expect((utterance.pcm.length / SAMPLE_RATE) * 1000).toBeLessThanOrEqual(
+      2_000,
+    );
   });
 
   it('honours a longer end-of-turn silence setting', () => {

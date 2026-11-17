@@ -196,6 +196,16 @@ export class CallsService {
     });
   }
 
+  // The realtime voice said something other than the text it was given.
+  recordTtsDrift(call_id: string): Promise<LiveCall> {
+    return this.changeCall(call_id, SYSTEM_ACTOR, (locked_call) => ({
+      metrics: {
+        ...locked_call.metrics,
+        tts_drift_count: (locked_call.metrics.tts_drift_count ?? 0) + 1,
+      },
+    }));
+  }
+
   // Runs `work` in one transaction with the call row locked, so everything
   // written for one call is serialised. Throws CallNotFoundError / CallEndedError.
   withLockedCall<Result>(

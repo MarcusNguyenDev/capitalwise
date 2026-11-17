@@ -1,39 +1,57 @@
 @import "tailwindcss";
 
 /*
- * Clean banking look: white background, one red accent, generous spacing and
- * large type so the screens read well on a 1920x1080 recording.
+ * Design tokens. Light theme, one red brand accent. Red is reserved for the
+ * primary action on a screen and for genuine danger; status uses its own
+ * colours so "needs a person" never reads as "something broke".
+ * Every text colour here meets WCAG AA (4.5:1) on white and on `canvas`.
  */
 @theme {
   --color-accent: #d6002a;
   --color-accent-dark: #a80021;
   --color-accent-soft: #fdeef1;
-  --color-ink: #16181d;
-  --color-ink-soft: #4a5160;
-  --color-ink-faint: #8a91a0;
-  --color-line: #e6e8ec;
-  --color-surface: #f6f7f9;
-  --color-positive: #0f7b4f;
-  --color-positive-soft: #e6f5ee;
-  --color-warning: #b45f06;
-  --color-warning-soft: #fdf3e1;
-  --color-info: #1d5fd1;
-  --color-info-soft: #e8f0fd;
+
+  --color-ink: #15171c;
+  --color-ink-soft: #464c59;
+  --color-ink-faint: #656c79;
+  --color-line: #e3e6eb;
+  --color-line-strong: #c9ced6;
+  --color-canvas: #f5f6f8;
+  --color-surface: #f0f2f5;
+  --color-white: #ffffff;
+
+  --color-positive: #0d7148;
+  --color-positive-soft: #e5f4ec;
+  --color-warning: #955105;
+  --color-warning-soft: #fdf1dc;
+  --color-info: #1c56c2;
+  --color-info-soft: #e7effc;
+  --color-focus: #2563eb;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --animate-slide-in: slide-in 0.35s ease-out both;
-  --animate-slide-down: slide-down 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
-  --animate-fade-in: fade-in 0.3s ease-out both;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-raised: 0 4px 12px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-overlay: 0 20px 40px rgb(16 24 40 / 0.16), 0 4px 12px rgb(16 24 40 / 0.08);
+
+  --animate-slide-in: slide-in 0.2s ease-out both;
+  --animate-slide-down: slide-down 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+  --animate-fade-in: fade-in 0.2s ease-out both;
   --animate-highlight: highlight 1.6s ease-out both;
-  --animate-attention: attention 1.4s ease-in-out infinite;
   --animate-ring: ring 1.2s ease-in-out infinite;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-sheet-in: sheet-in 0.25s ease-out both;
 
   @keyframes slide-in {
     from {
       opacity: 0;
-      transform: translateY(10px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
@@ -44,7 +62,7 @@
   @keyframes slide-down {
     from {
       opacity: 0;
-      transform: translateY(-24px);
+      transform: translateY(-16px);
     }
     to {
       opacity: 1;
@@ -61,24 +79,22 @@
     }
   }
 
-  /* Flash a changed value so a viewer of the recording notices it. */
-  @keyframes highlight {
-    0% {
-      background-color: #ffe9a8;
+  @keyframes sheet-in {
+    from {
+      transform: translateX(100%);
     }
-    100% {
-      background-color: transparent;
+    to {
+      transform: translateX(0);
     }
   }
 
-  /* Tiles that need a human pulse until someone picks them up. */
-  @keyframes attention {
-    0%,
-    100% {
-      box-shadow: 0 0 0 0 rgb(214 0 42 / 0.45);
+  /* Briefly marks a value that just changed. */
+  @keyframes highlight {
+    0% {
+      background-color: #fff1c2;
     }
-    50% {
-      box-shadow: 0 0 0 10px rgb(214 0 42 / 0);
+    100% {
+      background-color: transparent;
     }
   }
 
@@ -89,18 +105,28 @@
       opacity: 1;
     }
     50% {
-      transform: scale(1.12);
-      opacity: 0.7;
+      transform: scale(1.08);
+      opacity: 0.75;
+    }
+  }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
     }
   }
 }
 
 html {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 body {
-  background: #ffffff;
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -113,9 +139,23 @@ summary {
   cursor: pointer;
 }
 
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,5 +1,5 @@
-import { ResourcesWorkspace } from "@/features/resources/components/resources_workspace.component";
+import { TeamWorkspace } from "@/features/resources/components/team_workspace.component";
 
-export default function ResourcesPage() {
-  return <ResourcesWorkspace />;
+export default function TeamPage() {
+  return <TeamWorkspace />;
 }

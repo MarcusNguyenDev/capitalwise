@@ -11,6 +11,12 @@ export const AGENT_PHRASES = {
   // The model kept calling tools without answering.
   TOOL_ROUNDS_FALLBACK:
     "Sorry, I couldn't finish that just now. Could you tell me again what you need?",
+  // AI_MAX_LIVE_CALL_MINUTES reached.
+  TIME_LIMIT_GOODBYE:
+    "I'm sorry, we've reached the time limit for this call. Please call us back if there's anything else. Goodbye.",
+  // AI_IDLE_HANGUP_SECONDS of silence from the caller.
+  IDLE_GOODBYE:
+    "I haven't heard anything for a while, so I'll end the call now. Please call us back any time. Goodbye.",
 } as const;
 
 export function buildHandoverLine(command_text: string | null): string {
@@ -25,5 +31,7 @@ export function listAgentPhrases(bank_name: string): string[] {
     buildGreeting(bank_name),
     AGENT_PHRASES.TROUBLE_APOLOGY,
     AGENT_PHRASES.TOOL_ROUNDS_FALLBACK,
+    AGENT_PHRASES.TIME_LIMIT_GOODBYE,
+    AGENT_PHRASES.IDLE_GOODBYE,
   ];
 }

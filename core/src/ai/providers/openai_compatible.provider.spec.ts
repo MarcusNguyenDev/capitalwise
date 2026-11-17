@@ -101,7 +101,11 @@ describe('OpenAI-compatible providers', () => {
         {
           type: 'done',
           finish_reason: 'stop',
-          usage: { input_tokens: 900, output_tokens: 6, cached_input_tokens: 850 },
+          usage: {
+            input_tokens: 900,
+            output_tokens: 6,
+            cached_input_tokens: 850,
+          },
         },
       ]);
     });
@@ -130,7 +134,9 @@ describe('OpenAI-compatible providers', () => {
               choices: [
                 {
                   delta: {
-                    tool_calls: [{ index: 0, function: { arguments: '{"card_' } }],
+                    tool_calls: [
+                      { index: 0, function: { arguments: '{"card_' } },
+                    ],
                   },
                 },
               ],
@@ -144,7 +150,10 @@ describe('OpenAI-compatible providers', () => {
                       {
                         index: 1,
                         id: 'call_x2',
-                        function: { name: 'update_call_insight', arguments: '{}' },
+                        function: {
+                          name: 'update_call_insight',
+                          arguments: '{}',
+                        },
                       },
                     ],
                   },
@@ -182,18 +191,20 @@ describe('OpenAI-compatible providers', () => {
     });
 
     it('ignores reasoning fields and strips <think> blocks split across chunks', async () => {
-      global.fetch = jest.fn().mockResolvedValue(
-        buildStreamedResponse([
-          toSse([
-            { choices: [{ delta: { reasoning_content: 'hmm, a card' } }] },
-            { choices: [{ delta: { reasoning: 'still thinking' } }] },
-            textChunk('<think>quietly'),
-            textChunk(' plan</thi'),
-            textChunk('nk>Done. '),
-            textChunk('Anything else?'),
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(
+          buildStreamedResponse([
+            toSse([
+              { choices: [{ delta: { reasoning_content: 'hmm, a card' } }] },
+              { choices: [{ delta: { reasoning: 'still thinking' } }] },
+              textChunk('<think>quietly'),
+              textChunk(' plan</thi'),
+              textChunk('nk>Done. '),
+              textChunk('Anything else?'),
+            ]),
           ]),
-        ]),
-      ) as unknown as typeof fetch;
+        ) as unknown as typeof fetch;
 
       const chat_events = await collectEvents(
         new VllmProvider(PROVIDER_CONFIG).chat(buildChatRequest()),
@@ -213,7 +224,9 @@ describe('OpenAI-compatible providers', () => {
         .mockResolvedValue(buildStreamedResponse([toSse([textChunk('ok')])]));
       global.fetch = fetch_mock as unknown as typeof fetch;
 
-      await collectEvents(new VllmProvider(PROVIDER_CONFIG).chat(buildChatRequest()));
+      await collectEvents(
+        new VllmProvider(PROVIDER_CONFIG).chat(buildChatRequest()),
+      );
 
       const [request_url, request_init] = fetch_mock.mock.calls[0];
       const request_body = JSON.parse(request_init.body);
@@ -232,7 +245,10 @@ describe('OpenAI-compatible providers', () => {
           {
             id: 'call_1',
             type: 'function',
-            function: { name: 'lock_card', arguments: '{"card_id":"CRD-10011"}' },
+            function: {
+              name: 'lock_card',
+              arguments: '{"card_id":"CRD-10011"}',
+            },
           },
         ],
       });
@@ -242,7 +258,7 @@ describe('OpenAI-compatible providers', () => {
       });
     });
 
-    it('OpenAI uses max_completion_tokens and sends reasoning_effort only when not "none"', async () => {
+    it('OpenAI uses max_completion_tokens and sends any configured reasoning_effort, "none" included', async () => {
       const fetch_mock = jest
         .fn()
         .mockImplementation(async () =>
@@ -255,16 +271,23 @@ describe('OpenAI-compatible providers', () => {
       await collectEvents(
         openai_provider.chat(buildChatRequest({ reasoning_effort: 'low' })),
       );
+      await collectEvents(
+        openai_provider.chat(buildChatRequest({ reasoning_effort: '' })),
+      );
 
       const first_body = JSON.parse(fetch_mock.mock.calls[0][1].body);
       const second_body = JSON.parse(fetch_mock.mock.calls[1][1].body);
+      const third_body = JSON.parse(fetch_mock.mock.calls[2][1].body);
       expect(fetch_mock.mock.calls[0][1].headers.Authorization).toBe(
         'Bearer sk-test',
       );
       expect(first_body.max_completion_tokens).toBe(300);
       expect(first_body.max_tokens).toBeUndefined();
-      expect(first_body.reasoning_effort).toBeUndefined();
+      // gpt-6-luna calls functions in Chat Completions only with "none".
+      expect(first_body.reasoning_effort).toBe('none');
       expect(second_body.reasoning_effort).toBe('low');
+      // Empty means "do not send", for models that reject the parameter.
+      expect(third_body.reasoning_effort).toBeUndefined();
     });
   });
 
@@ -272,7 +295,9 @@ describe('OpenAI-compatible providers', () => {
     it('transcribes a WAV through a multipart form and reports its duration', async () => {
       const fetch_mock = jest
         .fn()
-        .mockResolvedValue(new Response(JSON.stringify({ text: ' I lost my card. ' })));
+        .mockResolvedValue(
+          new Response(JSON.stringify({ text: ' I lost my card. ' })),
+        );
       global.fetch = fetch_mock as unknown as typeof fetch;
       const one_and_a_half_seconds = encodeWav(new Int16Array(24_000), 16_000);
 
@@ -292,7 +317,9 @@ describe('OpenAI-compatible providers', () => {
         model: 'Systran/faster-whisper-small.en',
       });
       const [request_url, request_init] = fetch_mock.mock.calls[0];
-      expect(request_url).toBe('http://speech.test:8000/v1/audio/transcriptions');
+      expect(request_url).toBe(
+        'http://speech.test:8000/v1/audio/transcriptions',
+      );
       const transcription_form = request_init.body as FormData;
       expect(transcription_form.get('model')).toBe(
         'Systran/faster-whisper-small.en',
@@ -310,7 +337,9 @@ describe('OpenAI-compatible providers', () => {
         );
       global.fetch = fetch_mock as unknown as typeof fetch;
 
-      const speech_result = await new SpeachesProvider(PROVIDER_CONFIG).synthesize({
+      const speech_result = await new SpeachesProvider(
+        PROVIDER_CONFIG,
+      ).synthesize({
         text: 'Hello',
         model: 'speaches-ai/piper-en_GB-alba-medium',
         voice: 'alba',
@@ -330,28 +359,147 @@ describe('OpenAI-compatible providers', () => {
       expect(speech_result.pcm).toBeInstanceOf(Int16Array);
       expect(speech_result.pcm.length).toBe(24_000);
       expect(speech_result.pcm[100]).toBe(1000);
-      expect(speech_result).toMatchObject({ provider: 'speaches', voice: 'alba' });
+      expect(speech_result).toMatchObject({
+        provider: 'speaches',
+        voice: 'alba',
+      });
     });
 
-    it('Speaches has no chat and vLLM has no speech', async () => {
+    it('Speaches has no chat and never receives tone instructions', async () => {
       await expect(
-        collectEvents(new SpeachesProvider(PROVIDER_CONFIG).chat(buildChatRequest())),
+        collectEvents(
+          new SpeachesProvider(PROVIDER_CONFIG).chat(buildChatRequest()),
+        ),
       ).rejects.toBeInstanceOf(CapabilityNotSupportedError);
-      await expect(
-        new VllmProvider(PROVIDER_CONFIG).synthesize({
-          text: 'hi',
-          model: 'x',
-          voice: 'y',
-          speed: 1,
-          timeout_ms: 1_000,
+      const fetch_mock = jest
+        .fn()
+        .mockResolvedValue(
+          new Response(new Uint8Array(encodeWav(new Int16Array(10), 24_000))),
+        );
+      global.fetch = fetch_mock as unknown as typeof fetch;
+
+      await new SpeachesProvider(PROVIDER_CONFIG).synthesize({
+        text: 'hi',
+        model: 'kokoro',
+        voice: 'bf_emma',
+        speed: 1,
+        instructions: 'Warm and calm.',
+        timeout_ms: 1_000,
+      });
+
+      expect(
+        JSON.parse(fetch_mock.mock.calls[0][1].body).instructions,
+      ).toBeUndefined();
+    });
+  });
+
+  describe('vLLM-Omni speech (Qwen3-TTS)', () => {
+    const SPEECH_REQUEST = {
+      text: 'Thanks for holding.',
+      model: 'Qwen/Qwen3-TTS',
+      voice: 'vivian',
+      speed: 1,
+      instructions: 'Warm, calm, reassuring bank specialist.',
+      sample_rate: 24_000,
+      timeout_ms: 5_000,
+      base_url: 'http://tts-gpu.test:8091/v1',
+    };
+
+    it('streams a WAV from the capability server and reads the rate from its header', async () => {
+      const fetch_mock = jest.fn().mockResolvedValue(buildStreamedResponse([]));
+      const streamed_wav = new Uint8Array(
+        encodeWav(new Int16Array(16_000).fill(500), 16_000),
+      );
+      fetch_mock.mockResolvedValue(new Response(streamed_wav));
+      global.fetch = fetch_mock as unknown as typeof fetch;
+
+      const speech_result = await new VllmProvider(PROVIDER_CONFIG).synthesize(
+        SPEECH_REQUEST,
+      );
+
+      const [request_url, request_init] = fetch_mock.mock.calls[0];
+      expect(request_url).toBe('http://tts-gpu.test:8091/v1/audio/speech');
+      expect(JSON.parse(request_init.body)).toEqual({
+        model: 'Qwen/Qwen3-TTS',
+        voice: 'vivian',
+        input: 'Thanks for holding.',
+        speed: 1,
+        instructions: 'Warm, calm, reassuring bank specialist.',
+        response_format: 'wav',
+        stream: true,
+        stream_format: 'audio',
+      });
+      // One second at 16 kHz, resampled to the 24 kHz asked for.
+      expect(speech_result.sample_rate).toBe(24_000);
+      expect(speech_result.pcm.length).toBe(24_000);
+    });
+
+    it('falls back to one plain request when streaming is refused', async () => {
+      const fetch_mock = jest
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('{"error":"stream unsupported"}', { status: 400 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(new Uint8Array(encodeWav(new Int16Array(240), 24_000))),
+        );
+      global.fetch = fetch_mock as unknown as typeof fetch;
+
+      const speech_result = await new VllmProvider(PROVIDER_CONFIG).synthesize(
+        SPEECH_REQUEST,
+      );
+
+      const fallback_body = JSON.parse(fetch_mock.mock.calls[1][1].body);
+      expect(fallback_body.stream).toBeUndefined();
+      expect(fallback_body.response_format).toBe('wav');
+      expect(speech_result.pcm.length).toBe(240);
+    });
+
+    it('does not stream at another speed, and reads the rate of raw PCM from its content type', async () => {
+      const raw_pcm = new Int16Array(16_000).fill(300);
+      const fetch_mock = jest.fn().mockResolvedValue(
+        new Response(new Uint8Array(raw_pcm.buffer), {
+          headers: { 'content-type': 'audio/pcm; rate=16000' },
         }),
-      ).rejects.toBeInstanceOf(CapabilityNotSupportedError);
+      );
+      global.fetch = fetch_mock as unknown as typeof fetch;
+
+      const speech_result = await new VllmProvider(PROVIDER_CONFIG).synthesize({
+        ...SPEECH_REQUEST,
+        speed: 1.2,
+      });
+
+      expect(
+        JSON.parse(fetch_mock.mock.calls[0][1].body).stream,
+      ).toBeUndefined();
+      expect(fetch_mock).toHaveBeenCalledTimes(1);
+      expect(speech_result.pcm.length).toBe(24_000);
+    });
+
+    it('uses the provider URL when no capability URL is set', async () => {
+      const fetch_mock = jest
+        .fn()
+        .mockResolvedValue(
+          new Response(new Uint8Array(encodeWav(new Int16Array(10), 24_000))),
+        );
+      global.fetch = fetch_mock as unknown as typeof fetch;
+
+      await new VllmProvider(PROVIDER_CONFIG).synthesize({
+        ...SPEECH_REQUEST,
+        base_url: undefined,
+      });
+
+      expect(fetch_mock.mock.calls[0][0]).toBe(
+        'http://vllm.test:8000/v1/audio/speech',
+      );
     });
   });
 
   it('OpenAI needs a key to count as configured', () => {
     const keyless_provider = new OpenAiProvider({
-      providers: { openai: { base_url: 'https://api.openai.com/v1', api_key: '' } },
+      providers: {
+        openai: { base_url: 'https://api.openai.com/v1', api_key: '' },
+      },
     } as never);
 
     expect(keyless_provider.isConfigured()).toBe(false);

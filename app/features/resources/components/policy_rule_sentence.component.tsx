@@ -3,7 +3,7 @@ import { describeCondition, describeRuleOutcome } from "@/shared/policy/describe
 import type { PolicyRule } from "@/shared/types/case.type";
 
 function Keyword({ word }: { word: string }) {
-  return <span className="font-bold text-accent">{word} </span>;
+  return <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{word} </span>;
 }
 
 function describeProposal(proposal: Record<string, unknown>): string {
@@ -12,25 +12,26 @@ function describeProposal(proposal: Record<string, unknown>): string {
     .join(", ");
 }
 
-/** One policy rule as a readable sentence: IF conditions THEN route and recommendation. */
+/** One policy rule as a readable sentence: IF conditions THEN outcome. */
 export function PolicyRuleSentence({ rule, is_default = false }: { rule: PolicyRule; is_default?: boolean }) {
   const conditions = rule.when ?? [];
+  const is_fallback = is_default || conditions.length === 0;
   return (
-    <li className="grid grid-cols-[7.5rem_1fr] gap-3 border-t border-line py-2.5 first:border-t-0">
-      <span className="font-mono font-bold">{rule.id}</span>
+    <li className="grid grid-cols-[5.5rem_1fr] gap-3 border-b border-line py-2.5 text-sm last:border-b-0">
+      <span className="font-mono text-xs font-semibold">{rule.id}</span>
       <div>
-        <p className="text-lg leading-snug">
-          {is_default || conditions.length === 0 ? (
-            <Keyword word="OTHERWISE" />
+        <p className="leading-relaxed">
+          {is_fallback ? (
+            <Keyword word="Otherwise" />
           ) : (
             conditions.map((condition, condition_index) => (
               <span key={`${condition.fact}:${condition.op}`}>
-                <Keyword word={condition_index === 0 ? "IF" : "AND"} />
+                <Keyword word={condition_index === 0 ? "If" : "and"} />
                 {describeCondition(condition)}{" "}
               </span>
             ))
           )}
-          {is_default || conditions.length === 0 ? null : <Keyword word="THEN" />}
+          {is_fallback ? null : <Keyword word="then" />}
           <span className="font-semibold">{describeRuleOutcome(rule)}</span>
         </p>
         <p className="text-ink-soft">

@@ -53,6 +53,8 @@ export interface PhoneCall {
   call_audio: CallRoomState | null;
   placeCall: (caller: Caller, call_mode: CallMode) => Promise<void>;
   hangUp: () => void;
+  /** Live calls only: sends a typed line to the AI. Resolves false (after a toast) when it was not sent. */
+  sendTypedMessage: (text: string) => Promise<boolean>;
   unlockAudio: () => void;
   setMicrophoneMuted: (is_muted: boolean) => void;
 }
@@ -110,7 +112,7 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
       title: "Live voice is not available",
       description: can_use_script
         ? `${describeError(error)} Scripted mode replays this call through the same pipeline.`
-        : `${describeError(error)} This caller has no scripted call; pick one of the hero callers.`,
+        : `${describeError(error)} This caller has no scripted call, so try Live again or pick another caller.`,
       tone: "error",
       is_sticky: can_use_script,
       action_label: can_use_script ? "Switch to Scripted mode" : undefined,
@@ -188,6 +190,20 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     showEndedScreen(active_session.call_id);
   };
 
+  const sendTypedMessage = async (text: string): Promise<boolean> => {
+    const active_session = active_session_ref.current;
+    if (!active_session?.session.sendTypedMessage) {
+      return false;
+    }
+    try {
+      await active_session.session.sendTypedMessage(text);
+      return true;
+    } catch (error) {
+      showToast({ title: "Your message was not sent", description: describeError(error), tone: "error" });
+      return false;
+    }
+  };
+
   useLiveEvent<CallCommand>(LIVE_EVENT.CALL_COMMAND, (command) => {
     const active_session = active_session_ref.current;
     if (!active_session || command.call_id !== active_session.call_id) {
@@ -254,6 +270,7 @@ export function usePhoneCall(options: PhoneCallOptions): PhoneCall {
     call_audio,
     placeCall,
     hangUp,
+    sendTypedMessage,
     unlockAudio: () => active_session_ref.current?.session.unlockAudio(),
     setMicrophoneMuted: (is_muted) => active_session_ref.current?.session.setMicrophoneMuted(is_muted),
   };

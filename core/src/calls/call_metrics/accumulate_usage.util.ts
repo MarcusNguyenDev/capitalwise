@@ -2,9 +2,14 @@ import { CallUsage } from '../types/call_metrics.type';
 
 const USAGE_KEYS: (keyof CallUsage)[] = [
   'llm_input_tokens',
+  'llm_cached_input_tokens',
   'llm_output_tokens',
   'stt_audio_seconds',
   'tts_characters',
+  'tts_input_tokens',
+  'tts_cached_input_tokens',
+  'tts_output_audio_tokens',
+  'tts_output_text_tokens',
 ];
 
 const STT_SECONDS_DECIMAL_PLACES = 2;

@@ -8,12 +8,14 @@ import { aiConfig } from './config/ai.config';
 import { appConfig } from './config/app.config';
 import { cacheConfig } from './config/cache.config';
 import { contentConfig } from './config/content.config';
+import { costGuardConfig } from './config/cost_guard.config';
 import { databaseConfig } from './config/database.config';
 import { engineApiConfig } from './config/engine_api.config';
 import { holdBufferConfig } from './config/hold_buffer.config';
 import { livekitConfig } from './config/livekit.config';
 import { pricingConfig } from './config/pricing.config';
 import { turnDetectionConfig } from './config/turn_detection.config';
+import { CustomerMessagesModule } from './customer_messages/customer_messages.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { InterventionsModule } from './interventions/interventions.module';
@@ -35,6 +37,7 @@ import { VoiceAgentModule } from './voice_agent/voice_agent.module';
         appConfig,
         cacheConfig,
         contentConfig,
+        costGuardConfig,
         databaseConfig,
         engineApiConfig,
         holdBufferConfig,
@@ -53,6 +56,7 @@ import { VoiceAgentModule } from './voice_agent/voice_agent.module';
     LivekitModule,
     VoiceAgentModule,
     VoiceModule,
+    CustomerMessagesModule,
     SimulatorModule,
     ScriptedCallsModule,
   ],

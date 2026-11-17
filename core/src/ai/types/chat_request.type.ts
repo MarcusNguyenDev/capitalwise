@@ -49,6 +49,8 @@ export interface ChatRequest {
   tools?: ChatToolDefinition[];
   temperature?: number;
   max_output_tokens?: number;
+  // Overrides AI_CHAT_TIMEOUT_MS for one request (e.g. a cold warm-up).
+  timeout_ms?: number;
   abort_signal?: AbortSignal;
 }
 
@@ -60,4 +62,6 @@ export interface ResolvedChatRequest extends ChatRequest {
   timeout_ms: number;
   // 'none' turns thinking off; each provider maps it to its own switch.
   reasoning_effort: string;
+  // AI_CHAT_BASE_URL: this capability's own server (empty = the provider's).
+  base_url?: string;
 }

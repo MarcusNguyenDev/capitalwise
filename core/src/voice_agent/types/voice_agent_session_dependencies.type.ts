@@ -3,14 +3,9 @@ import {
   ChatToolDefinition,
 } from '../../ai/types/chat_request.type';
 import { ChatStreamEvent } from '../../ai/types/chat_stream_event.type';
-import {
-  SpeechRequest,
-  SpeechResult,
-} from '../../ai/types/speech_synthesis.type';
-import {
-  TranscriptionRequest,
-  TranscriptionResult,
-} from '../../ai/types/transcription.type';
+import { SpeechStream } from '../../ai/types/speech_stream.type';
+import { SpeechRequest } from '../../ai/types/speech_synthesis.type';
+import { TranscriptionStream } from '../../ai/types/transcription_stream.type';
 import { ToolOutcome } from '../../call_tools/types/tool_outcome.type';
 import { CallCommand } from '../../interventions/types/call_command.type';
 import { HoldStart } from '../../calls/call_hold.service';
@@ -27,6 +22,13 @@ export interface VoiceAgentSettings {
   staff_voice: string;
   is_hold_tone_enabled: boolean;
   is_human_active_at_start: boolean;
+  // Self-hosted chat backends only: a paid API is never sent the extra request.
+  is_prompt_warm_up_enabled: boolean;
+  // Cost guards (AI_MAX_CALL_COST_USD, AI_MAX_LIVE_CALL_MINUTES,
+  // AI_IDLE_HANGUP_SECONDS).
+  max_call_cost_usd: number;
+  max_call_ms: number;
+  idle_hangup_ms: number;
 }
 
 // Everything one call's voice agent needs from the rest of core. The agent
@@ -39,10 +41,11 @@ export interface VoiceAgentSessionDependencies {
   voice_activity_detector: EnergyVoiceActivityDetector;
   ai: {
     chat: (chat_request: ChatRequest) => AsyncIterable<ChatStreamEvent>;
-    transcribe: (
-      transcription_request: TranscriptionRequest,
-    ) => Promise<TranscriptionResult>;
-    synthesize: (speech_request: SpeechRequest) => Promise<SpeechResult>;
+    // One per call, opened when the agent joins.
+    openTranscriptionStream: () => TranscriptionStream;
+    synthesizeStream: (speech_request: SpeechRequest) => SpeechStream;
+    // Closes the speech connections kept for this call.
+    releaseSpeechSessions: () => void;
   };
   getPhraseAudio: (phrase_text: string, voice: string) => Promise<Int16Array>;
   calls: {
@@ -54,10 +57,12 @@ export interface VoiceAgentSessionDependencies {
         latency_ms?: number;
       },
     ) => Promise<unknown>;
+    // Resolves with the call's estimated cost so far (USD).
     recordUsage: (
       call_id: string,
       usage: Partial<CallUsage>,
-    ) => Promise<unknown>;
+    ) => Promise<number>;
+    recordTtsDrift: (call_id: string) => Promise<unknown>;
     endCall: (
       call_id: string,
       end_call: { ended_by: 'CUSTOMER' | 'SYSTEM' },
@@ -76,7 +81,11 @@ export interface VoiceAgentSessionDependencies {
     call_id: string,
     intervention_id: string,
   ) => Promise<unknown>;
-  emitTranscriptDelta: (delta: string, item_id: string) => void;
+  emitTranscriptDelta: (
+    delta: string,
+    item_id: string,
+    speaker: 'AI' | 'CUSTOMER',
+  ) => void;
   // Called once the session has stopped and released everything.
   onStopped: () => void;
 }

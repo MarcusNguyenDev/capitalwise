@@ -1,251 +1,170 @@
-# Live voice: what the phone client must do
+# Live voice: core's speech pipeline over LiveKit
 
-`core` mints a short-lived OpenAI Realtime client secret. The browser (the `/phone` page) then talks to OpenAI directly over WebRTC and relays what happens to `core`. The OpenAI API key never leaves `core`.
+All call audio (customer phone, AI agent, staff) goes through **LiveKit** (`media`). The AI side of a LIVE call is a **voice agent inside core**: it joins the call's room like any participant, listens to the customer, and speaks back. core orchestrates the whole conversation (turn detection, the language model and its tools, hold lines, supervisor controls); no speech-to-speech model ever decides what is said. It runs its own loop
 
-Everything below was checked against the official OpenAI docs on 2026-11-16 (Realtime GA API):
-
-- WebRTC guide: https://developers.openai.com/api/docs/guides/realtime-webrtc
-- Conversations guide: https://developers.openai.com/api/docs/guides/realtime-conversations
-- Client secrets reference: https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create
-- Client events: https://developers.openai.com/api/reference/resources/realtime/client-events
-- Server events: https://developers.openai.com/api/reference/resources/realtime/server-events
-
-There is no OpenAI key on the build machine, so none of this has run against the real API. The server side is unit tested with a mocked HTTP call. Treat the browser flow as verified against the docs, not against a live session.
-
-## 1. Check availability
-
-`GET /core/voice/status` returns `{ "is_live_available": false, "model": "gpt-realtime", "voice": "marin" }`.
-
-When `is_live_available` is `false` (no `OPENAI_API_KEY`), offer Scripted mode only. `POST /core/voice/sessions` answers `503 LIVE_VOICE_UNAVAILABLE` in that case, and `502 VOICE_SESSION_MINT_FAILED` when OpenAI refuses or cannot be reached. Show the "use Scripted mode" toast for both.
-
-## 2. Start a call and mint the session
-
-1. `POST /core/calls` with `{ "caller_number": "+61491570156", "channel": "BROWSER", "mode": "LIVE" }`. Keep `call_id`.
-2. Socket: `join` with `{ "role": "PHONE", "call_id": "...", "customer_id": "..." }`.
-3. `POST /core/voice/sessions` with `{ "call_id": "..." }`. The response:
-
-```json
-{
-  "client_secret": "ek_...",
-  "expires_at": "2026-11-16T03:10:00.000Z",
-  "model": "gpt-realtime",
-  "voice": "marin",
-  "instructions": "You are the AI phone specialist for Demo Bank. ...",
-  "tools": [{ "type": "function", "name": "get_caller_context", "description": "...", "parameters": { "type": "object", "properties": {}, "required": [], "additionalProperties": false } }]
-}
+```
+customer mic ─► LiveKit ─► voice agent: turn detection (VAD) ─► speech-to-text ─► language model + tools ─► text-to-speech ─► LiveKit ─► phone speaker
 ```
 
-`expires_at` is an ISO timestamp (OpenAI returns Unix seconds; core converts it). The secret lives 10 minutes and only needs to be valid when the SDP exchange starts. `instructions` and `tools` are returned for display and debugging: they are already baked into the session, so the browser does not send them again.
+and every model call goes through one injectable `AiService` (module `src/ai`), so which backend serves chat, speech-to-text and text-to-speech is just `core/.env`. The default is OpenAI (`gpt-6-luna` for chat, `gpt-live-transcribe` streaming speech-to-text, `gpt-realtime-2.1-mini` as the voice); Ollama, vLLM, Speaches and Qwen3-TTS are drop-in alternatives.
 
-What core sends to OpenAI (`POST https://api.openai.com/v1/realtime/client_secrets`, `Authorization: Bearer <OPENAI_API_KEY>`):
+### The OpenAI path
 
-```json
-{
-  "expires_after": { "anchor": "created_at", "seconds": 600 },
-  "session": {
-    "type": "realtime",
-    "model": "gpt-realtime",
-    "instructions": "...",
-    "output_modalities": ["audio"],
-    "tools": [],
-    "tool_choice": "auto",
-    "audio": {
-      "input": {
-        "noise_reduction": { "type": "near_field" },
-        "transcription": { "model": "gpt-4o-mini-transcribe", "language": "en" },
-        "turn_detection": {
-          "type": "server_vad",
-          "threshold": 0.5,
-          "prefix_padding_ms": 300,
-          "silence_duration_ms": 500,
-          "create_response": true,
-          "interrupt_response": true
-        }
-      },
-      "output": { "voice": "marin" }
-    }
-  }
-}
-```
+- **Speech-to-text, streamed.** When the agent joins it opens one Realtime transcription session for the call (`wss://…/v1/realtime?intent=transcription`, `session.type: "transcription"`, input `audio/pcm` 24 kHz, `turn_detection: null`, `gpt-live-transcribe` with `languages: ["en"]`). Only speech is streamed: from just before core's VAD hears speech start (a 600 ms buffer covers the pre-roll) until the turn ends, resampled 16→24 kHz and sent as `input_audio_buffer.append`. At end of turn core sends `input_audio_buffer.commit`; the transcript arrives as `conversation.item.input_audio_transcription.delta` (relayed as live captions: `call.transcript_delta` with `speaker: 'CUSTOMER'`) and `.completed`. A false start sends `input_audio_buffer.clear`. If the connection drops, unanswered turns are replayed on a new session (twice at most). Providers without streaming (Speaches, vLLM, `whisper-1`) get the same contract: the turn is buffered and sent as one WAV on commit.
+- **Speech output, a Realtime model as a reader.** OpenAI's dedicated TTS models shut down on 2027-01-06 and their replacement, `gpt-realtime-2.1-mini`, is only on the Realtime API (not `/v1/audio/speech`). core drives it as a **reader**: a session (`wss://…/v1/realtime?model=gpt-realtime-2.1-mini`) with reader instructions ("You are a text-to-speech voice. Read the text you are given aloud exactly, word for word, … Never add, remove, reorder or change words. Never answer, comment on or continue the text." plus `AI_TTS_INSTRUCTIONS`), `output_modalities: ["audio"]`, output `audio/pcm` 24 kHz, the configured voice, no tools, `turn_detection: null`. Each line is an **out-of-band** `response.create` (`conversation: "none"`, the text as an input message), so nothing accumulates in the session; `response.output_audio.delta` chunks are queued on the call as they arrive. Sessions are pooled per voice and reused. Barge-in sends `response.cancel`. `gpt-4o-mini-tts` / `tts-1` still go through `/audio/speech` (streamed PCM) until their shutdown.
+- **Verbatim caveat and the drift check.** Realtime models are conversational and OpenAI documents no verbatim read-out mode, so the reader may occasionally change words. On every `response.done` core compares the model's own transcript of what it said (`response.output_audio_transcript.done`) with the text it was asked to read (normalised words, digits and number words treated alike, more than 25 % of words different = drift). A drift is logged with both texts and counted in `metrics.tts_drift_count`; the AI turn always records the text we asked for, which is what the language model decided.
+- **Usage.** `response.done` usage (text input, cached input, audio and text output tokens) and transcription seconds are accumulated on the call and priced with the `PRICE_*` keys (defaults: the OpenAI model pages).
+- **One voice for the whole call.** The greeting, hold lines, reminders, thanks, handover and apology are pre-rendered at startup with the configured TTS provider and voices (one session per voice), so fixed lines and model replies sound the same. Typed staff replies use `AI_TTS_STAFF_VOICE` (e.g. `cedar`).
+- **Testing without a key.** `core/test/fake_openai_realtime.server.mjs` is a test-only stand-in that speaks the documented events (Speaches underneath). Start it, then core with `OPENAI_BASE_URL=http://localhost:8790/v1 OPENAI_API_KEY=fake` (the Realtime WebSocket URL is derived from `OPENAI_BASE_URL`).
 
-OpenAI answers `{ "value": "ek_...", "expires_at": 1756310470, "session": { ... } }`. The secret is the top-level `value`.
+## What the browser does (and nothing else)
 
-## 3. SDP exchange (browser)
+1. `GET /core/voice/status`. Enable "Live" only when `is_live_available` is true; otherwise show `unavailable_reason` (e.g. "Chat provider ollama is not configured. Set OLLAMA_BASE_URL in core/.env.").
+2. `POST /core/calls` `{ caller_number, channel: 'BROWSER', mode: 'LIVE' }`, then socket `join` `{ role: 'PHONE', call_id, customer_id }`.
+3. `POST /core/voice/sessions` `{ call_id }` → `{ room_name, livekit_url, token, identity: 'customer' }`. This also starts the voice agent for the call.
+4. Join the room with `livekit-client`: `room.connect(livekit_url ?? 'ws://' + location.hostname + ':7880', token)`, call `room.startAudio()` from the click that started the call (autoplay policy), **publish the microphone** with echo cancellation, noise suppression and auto gain on, and **attach every remote audio track** to an `<audio autoplay>` element. The AI's voice, staff speaking after a takeover and typed staff replies all arrive as remote audio.
+5. Show captions from socket `call.turn` (final turns) and `call.transcript_delta` (`speaker: 'AI'`, streamed while the AI speaks). Show "On hold" from `call.hold`. On `call.command` only update the UI (human joined banner, ended): in LIVE mode core acts on the commands itself.
+6. **Type instead of speaking** (optional, no microphone or a noisy room): `POST /core/calls/:call_id/customer_messages` `{ text }` (1 to 500 characters) → `202 { is_accepted: true }`. The voice agent treats the line exactly like a transcribed utterance without speech-to-text: it interrupts the AI if it is speaking, records and emits the CUSTOMER turn (so it arrives as `call.turn` like speech), answers it unless the call is `HUMAN_ACTIVE` or a cost guard stopped the AI, and counts it as caller activity for the idle timer. Errors: `404 CALL_NOT_FOUND`, `409 CALL_ENDED`, `409 CALL_NOT_LIVE` (a Scripted call), `409 VOICE_AGENT_NOT_RUNNING` (no agent listening yet, or it stopped).
+7. Hang up: disconnect and `POST /core/calls/:call_id/end` `{ ended_by: 'CUSTOMER' }`. When a call ends by any path core deletes the room, which disconnects every participant.
 
-```ts
-const peer_connection = new RTCPeerConnection();
+The browser never talks to a model, never relays transcripts and never runs tools.
 
-const audio_element = document.createElement('audio');
-audio_element.autoplay = true;
-peer_connection.ontrack = (event) => (audio_element.srcObject = event.streams[0]);
+Dashboards: `POST /core/voice/staff_tokens` `{ call_id, staff_id, can_publish }` → `{ room_name, livekit_url, token, identity: 'staff_<id>' }`. `can_publish: false` = listen in (any staff, any time). `can_publish: true` = talk; only while the call is `HUMAN_ACTIVE` and assigned to that staff member (else `409 STAFF_CANNOT_PUBLISH`).
 
-const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
-peer_connection.addTrack(microphone.getTracks()[0]);
+Errors: `503 LIVE_VOICE_UNAVAILABLE` (LIVE call, live not available: the message contains the reason), `503 MEDIA_UNAVAILABLE` (LiveKit down: also blocks SCRIPTED sessions and staff tokens), `503 VOICE_AGENT_START_FAILED`, `404 CALL_NOT_FOUND`, `409 CALL_ENDED`. Offer Scripted mode on any of them.
 
-// The label must be exactly "oai-events".
-const data_channel = peer_connection.createDataChannel('oai-events');
+## Rooms and identities
 
-const offer = await peer_connection.createOffer();
-await peer_connection.setLocalDescription(offer);
+| | |
+| --- | --- |
+| Room | `call_<call_id>`, one per call, created on first join, deleted when the call ends (`/end`, END_CALL, customer gone > 10 s, no customer within 30 s, demo reset) |
+| `customer` | the phone (publish + subscribe), name = the customer's name |
+| `ai_specialist` | the core voice agent, one 24 kHz mono track, name "AI specialist" |
+| `staff_<staff_id>` | a dashboard, name = the staff member's name |
 
-const sdp_response = await fetch('https://api.openai.com/v1/realtime/calls', {
-  method: 'POST',
-  body: offer.sdp,
-  headers: {
-    Authorization: `Bearer ${client_secret}`,
-    'Content-Type': 'application/sdp',
-  },
-});
-await peer_connection.setRemoteDescription({ type: 'answer', sdp: await sdp_response.text() });
-```
+## What can spend money, and the guards
 
-All events travel as JSON strings on the data channel: `data_channel.send(JSON.stringify(event))` and `data_channel.onmessage = (message) => JSON.parse(message.data)`.
+With the OpenAI setup these code paths make paid requests; nothing else does.
 
-The prompt tells the model to open the call itself. When the data channel opens, send `{ "type": "response.create" }` once so the AI speaks first instead of waiting for the caller.
-
-## 4. Server events to handle
-
-| Event | Fields you need | What to do |
+| Code path | When | Paid for |
 | --- | --- | --- |
-| `input_audio_buffer.speech_started` | `item_id` | The caller started talking. With server VAD the model's audio is interrupted for you. |
-| `input_audio_buffer.speech_stopped` | `item_id` | Start the response-time stopwatch. |
-| `conversation.item.input_audio_transcription.delta` | `item_id`, `delta` | Socket `transcript_delta` `{ call_id, speaker: 'CUSTOMER', delta, item_id }`. Update the caption. |
-| `conversation.item.input_audio_transcription.completed` | `item_id`, `transcript` | `POST /core/calls/:call_id/turns` `{ speaker: 'CUSTOMER', text: transcript }`. Skip empty transcripts. |
-| `response.created` | `response.id` | Mark the AI as busy (see whisper below). |
-| `output_audio_buffer.started` | `response_id` | WebRTC only: first AI audio is playing. Stop the stopwatch: that is `latency_ms` for this AI turn. |
-| `response.output_audio_transcript.delta` | `item_id`, `delta` | Socket `transcript_delta` `{ call_id, speaker: 'AI', delta, item_id }`. |
-| `response.output_audio_transcript.done` | `item_id`, `transcript` | `POST /core/calls/:call_id/turns` `{ speaker: 'AI', text: transcript, latency_ms }`. Also sent for an interrupted response, with the partial transcript. |
-| `response.function_call_arguments.done` | `call_id`, `name`, `arguments` (JSON string) | Run the tool through core (section 5). Note: this `call_id` is OpenAI's function call id, not our call id. |
-| `response.done` | `response.status`, `response.output[]`, `response.usage` | Mark the AI as idle. Report usage (section 8). Send any pending tool outputs (section 5). |
-| `output_audio_buffer.stopped` / `.cleared` | `response_id` | The AI finished or was cut off. |
-| `error` | `error.type`, `error.code`, `error.message` | Log it. If the data channel or peer connection closes, show the toast offering Scripted mode. |
+| Voice agent, chat (`AiService.chat`, Chat Completions) | each model reply of a LIVE call (opening, each customer turn, up to 4 tool rounds, instructions, handback) | gpt-6-luna tokens |
+| Voice agent, transcription session (one WebSocket per LIVE call) | opened when the agent joins, closed when the call ends; audio is sent only while the caller speaks | gpt-live-transcribe minutes of streamed speech |
+| Voice agent, reader sessions (per LIVE call, closed when the call ends) | each sentence of a model reply and each typed staff message | gpt-realtime-2.1-mini tokens |
+| Phrase rendering (greeting, hold lines, goodbyes, handover lines) | only when a phrase is not yet in `core/.cache/phrase_audio` (first startup, a new voice/model/text, or a new staff name in the handover line); one one-off session at a time per voice | gpt-realtime-2.1-mini tokens |
+| Try-it endpoints `POST /core/ai/chat`, `/core/ai/transcriptions`, `/core/ai/speech` | only when someone calls them | per request |
 
-Transcription arrives asynchronously, so a caller's completed transcript can land after the AI already started answering. Order turns in the UI by the event order, not by `seq`, if that matters to you. Do not rely on input transcription deltas arriving in small pieces: depending on the transcription model, the whole text can arrive in a single delta just before `completed`.
+Never paid: reachability probes (`GET /models` only, cached 15 s, behind `/core/ai/status` and `/core/voice/status`), Scripted and simulated calls (no model, no WebSocket: the tool dispatcher only), the prompt warm-up (sent only to self-hosted chat backends, never to OpenAI), LiveKit.
 
-## 5. Function calls
+Guards (`core/.env`):
+- `AI_MAX_CALL_COST_USD` (1.00): once a call's estimated cost passes it, the agent stops generating, says "Sorry, I'm having trouble with that. Let me get someone from our team to help." (a cached phrase) and calls `request_human`. It keeps transcribing, so staff can still read along.
+- `AI_MAX_LIVE_CALL_MINUTES` (15): the agent says a short goodbye and ends the call (`ended_by: SYSTEM`).
+- `AI_IDLE_HANGUP_SECONDS` (90): if the caller says nothing while the agent has nothing in progress, it says a goodbye and ends the call. It never counts while a staff member has the call or the caller is on hold.
+- Connections are per call: the transcription session and reader sessions belong to one LIVE call and close when it ends (any path, including demo reset). One-off renders open a session for that one request.
+- Phrase audio is cached on disk, so restarts do not render the ~44 fixed phrases (22 lines in two voices) again.
+- Provider error messages are scrubbed of anything that looks like a key or bearer token before they are logged or returned; no code logs request headers.
 
-The model's tools are executed by core, never in the browser.
+## The voice agent's loop (one per LIVE call, `src/voice_agent`)
 
-1. On `response.function_call_arguments.done`, immediately call
-   `POST /core/calls/:call_id/tools/:name` with `{ "args": JSON.parse(arguments) }`.
-   It always answers HTTP 200 with `{ "ok": true, "result": {...} }` or `{ "ok": false, "error": { "code", "message" } }` (404 only for an unknown call, 409 for an ended call). Core writes the tool turn and emits `call.turn` itself: do not post a turn for it.
-2. Give the whole JSON body back to the model, success or failure. The error message is written for the model and tells it what to do next:
+1. **Join** as `ai_specialist`, publish its track, open the call's transcription stream, and warm the model's prompt cache (system prompt + tools, up to 120 s for a cold self-hosted model). No customer audio within 30 s: the call is ended (`SYSTEM`).
+2. **Opening**: plays the pre-rendered greeting "Hello, you've reached {BANK_NAME}'s AI specialist. This call is recorded." (an AI turn), runs `get_caller_context` through the normal tool dispatcher, waits for the warm-up to finish (so the two requests never race on a cold model), then lets the model greet the caller by name.
+3. **Listen**: the customer's track at 16 kHz goes through an energy VAD with an adaptive noise floor (`src/turn_detection`): speech starts after `VAD_SPEECH_START_MS` (200) above `VAD_ENERGY_THRESHOLD_RATIO` (3) × the noise floor, the turn ends after `VAD_END_OF_TURN_SILENCE_MS` (700) of silence, minimum 300 ms of speech, maximum 30 s, 300 ms of pre-roll kept.
+4. **Barge-in**: if the caller starts talking while the AI is replying, the queued audio is cleared, the model and TTS requests are aborted, and the AI turn is recorded with only what was heard plus " …". Hold lines, the greeting and staff speech are never cut.
+5. **Transcribe** (streamed while the caller speaks, committed at end of turn, results recorded in order): empty, punctuation-only, bracketed (`[BLANK_AUDIO]`) and known Whisper hallucinations on very short audio are dropped. The CUSTOMER turn is recorded and emitted (`call.turn`). A line the caller typed on the phone (`POST /core/calls/:call_id/customer_messages`) joins here, after any utterance still being transcribed, and is handled the same way, barge-in included.
+6. While the call is `HUMAN_ACTIVE` the agent only transcribes.
+7. **Think**: streamed chat with the active prompt version (`{BANK_NAME}` filled in), the last 30 messages, supervisor instructions as `system` messages ("Supervisor instruction: ..."), and the single tool registry (`src/call_tools/constants/tool_definitions.constant.ts`).
+8. **Speak while streaming**: text is cut into sentences (or a clause at ~120 characters), markdown and symbols are removed, each chunk is synthesised in order (chunk N+1 renders while N plays) through `AiService.synthesizeStream`, and its audio is queued on the track piece by piece as the voice produces it (10 ms frames). `call.transcript_delta` is emitted as text streams. One AI turn is recorded per reply with `latency_ms` = end of the caller's speech → first audio of the answer (also appended to `metrics.response_times_ms`).
+9. **Tools with a hold buffer** (`src/hold_buffer`): `get_caller_context` and `update_call_insight` are silent; `send_identity_push` plays "I've just sent a notification to your banking app. Please tap Approve when you see it, and I'll wait on the line."; every other tool plays "Thank you for that. I'll need to place you on hold for a moment while I check the system. I'll be right back with you." (a shorter rotating variant if the full line was heard in the last 30 s). While the tools run: a reminder every `HOLD_REMINDER_INTERVAL_MS` (max 3) and, with `HOLD_TONE_ENABLED`, a soft two-note tone between lines. A hold longer than `HOLD_RETURN_THRESHOLD_MS` ends with "Thanks for holding.". `call.hold` start/end events are emitted and `metrics.hold` / `metrics.total_hold_ms` updated. At most 4 tool rounds per customer turn, then a fallback line.
+10. **Supervisor commands** (internal event bus, not the socket): INSTRUCTION (added and answered at once if the agent is idle, then marked applied), TAKEOVER (stops, plays a chime and "You're now speaking with <first name> from our team." in the AI voice, goes silent), STAFF_MESSAGE (spoken in the staff voice `AI_TTS_STAFF_VOICE` on the agent's track; the turn is recorded by the endpoint), HANDBACK (the note becomes an instruction, marked applied, the AI resumes), END_CALL.
+11. **Usage**: `llm_input_tokens`, `llm_cached_input_tokens`, `llm_output_tokens`, `stt_audio_seconds`, `tts_characters`, `tts_input_tokens`, `tts_cached_input_tokens`, `tts_output_audio_tokens`, `tts_output_text_tokens` are accumulated on the call (`metrics.usage`), plus `metrics.tts_drift_count`; `estimated_cost_usd` uses the `PRICE_*` variables (set them to 0 when self-hosted).
+12. **Failures**: any provider error during a turn plays "Sorry, I'm having trouble with that. Let me get someone from our team to help." (at most once per 20 s) and calls `request_human` once. Nothing crashes the process; logs carry the call id and stage. Each answered turn logs `Turn timing call=… end_of_speech_to_first_audio_ms=… stt_ms=… llm_first_token_ms=… tts_first_chunk_ms=…`.
 
-```json
-{
-  "type": "conversation.item.create",
-  "item": {
-    "type": "function_call_output",
-    "call_id": "<the call_id from the function call event>",
-    "output": "{\"ok\":true,\"result\":{\"verified\":true}}"
-  }
-}
+At startup core stamps `engine.ai_agents.model` with `<AI_CHAT_PROVIDER>/<AI_CHAT_MODEL>` (again after a demo reset) and pre-renders the fixed phrases in both voices.
+
+## The `ai` module (`src/ai`)
+
+```
+ai/
+  ai.module.ts                     registers the providers in one map
+  ai.service.ts                    AiService: chat / transcribe / openTranscriptionStream / synthesize / synthesizeStream / getStatus / listModels
+  ai.controller.ts, ai_playground.service.ts   try-it endpoints
+  providers/
+    ai_provider.ts                 abstract AiProvider (the shared contract) + AI_PROVIDER_REGISTRY token
+    openai_compatible.provider.ts  shared base for OpenAI-style APIs (not registered itself)
+    ollama.provider.ts             Ollama native /api/chat (NDJSON, think: false), /api/tags
+    vllm.provider.ts               chat (+ enable_thinking=false), Whisper transcriptions, vLLM-Omni speech (Qwen3-TTS)
+    openai.provider.ts             chat, streaming transcription (Realtime), speech (Realtime reader or /audio/speech)
+    speaches.provider.ts           transcriptions + speech (Whisper, Kokoro, Piper)
+  wire/                            NDJSON/SSE readers, stream decoders, <think> filter, idle watchdog, WAV/PCM decoding,
+                                   Realtime socket, transcription stream, reader + pool, drift check, default streams
+  types/  dto/  errors/
 ```
 
-3. Then send `{ "type": "response.create" }` so the model speaks about the result.
+Shared structures (snake_case): `ChatRequest { model?, messages, tools?, temperature?, max_output_tokens?, abort_signal? }`; `chat()` yields `{ type: 'text_delta', text }`, `{ type: 'tool_call', tool_call_id, name, arguments }` (complete, parsed) and `{ type: 'done', finish_reason, usage }`; `transcribe({ audio: wav Buffer, model?, language?, prompt? }) → { text, duration_seconds, provider, model }`; `synthesize({ text, model?, voice?, speed?, instructions?, sample_rate? }) → { pcm: Int16Array, sample_rate, provider, model, voice }`; `synthesizeStream(same) → SpeechStream` (async iterable of PCM chunks + `summary: { spoken_transcript, is_drifted, usage, … }`); `openTranscriptionStream({ model?, language?, prompt? }) → TranscriptionStream { appendAudio(pcm, sample_rate), commit(): Promise<TranscriptionResult>, clear(), onDelta(listener), close() }`. Every provider gets the streams: the defaults wrap `transcribe()` / `synthesize()`. Providers hide the wire differences (NDJSON vs SSE, tool call ids Ollama may omit, argument strings vs objects, `<think>` blocks, `reasoning` fields, WAV parsing and resampling).
 
-Two things to get right:
+The chat timeout (`AI_CHAT_TIMEOUT_MS`) is an **idle** timeout: it restarts on every streamed chunk.
 
-- Send `response.create` only when no response is in progress. A response that contains a function call ends with `response.done` almost immediately, so the safe pattern is: start the HTTP call on `arguments.done`, and once BOTH the HTTP call has returned AND `response.done` has arrived for that response, send the `function_call_output` item(s) followed by ONE `response.create`. If a response holds several function calls, send all outputs first, then a single `response.create`.
-- `send_identity_push` blocks for up to 45 seconds while the customer taps Approve on the phone mockup (`POST /api/notifications/:notification_id/response`). The model has already said its filler line. If the caller speaks during the wait, server VAD starts a new response by itself; when the tool result arrives, wait for that response's `response.done` before sending the output and `response.create`.
+**One server per capability.** `AI_CHAT_BASE_URL`, `AI_STT_BASE_URL` and `AI_TTS_BASE_URL` (optional) point one capability at its own server; empty means the provider's own `*_BASE_URL`. A capability URL alone is enough to count the provider as configured for that capability, and `/core/ai/status` probes that server. It only applies to the provider configured for the capability (a try-it request that picks another provider uses that provider's URL). This is what vLLM needs, because one vLLM server runs one model.
 
-## 6. Supervisor whisper (`call.command` INSTRUCTION)
+**Tone instructions.** `AI_TTS_INSTRUCTIONS` is sent as `instructions` to providers that accept it (vLLM-Omni, OpenAI); `POST /core/ai/speech` takes `instructions` to override it for one request. Speaches never receives it.
 
-The phone receives `call.command` `{ call_id, command: 'INSTRUCTION', text, staff_id, staff_name, intervention_id }` on the socket.
+**Sample rates.** WAV answers carry their rate in the header; raw PCM answers are read from `Content-Type: audio/pcm; rate=…` or `x-sample-rate` (24 kHz only if undeclared). Audio is resampled to the 24 kHz the agent's track uses.
 
-1. Inject it as a system message, prefixed exactly `Supervisor instruction: ` (the prompt keys on this prefix):
+### Example: Qwen3-TTS on your GPU with vLLM-Omni
 
-```json
-{
-  "type": "conversation.item.create",
-  "item": {
-    "type": "message",
-    "role": "system",
-    "content": [{ "type": "input_text", "text": "Supervisor instruction: Show extra empathy and mention the National Debt Helpline" }]
-  }
-}
+vLLM-Omni serves an OpenAI-compatible `POST /v1/audio/speech` (`model`, `input`, `voice`, `response_format`, `speed`, `instructions`, and `stream: true` with `stream_format: "audio"` for audio bytes as they decode) and `GET /v1/audio/voices`.
+
+```
+AI_CHAT_PROVIDER=ollama
+AI_CHAT_MODEL=gpt-6:luna
+OLLAMA_BASE_URL=http://gpu-box:11434
+
+AI_TTS_PROVIDER=vllm
+AI_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice      # the model the TTS server serves (GET <url>/models)
+AI_TTS_AI_VOICE=vivian                                 # GET <url>/audio/voices lists the voices
+AI_TTS_STAFF_VOICE=ryan
+AI_TTS_SPEED=1.0                                       # streaming needs speed 1.0
+AI_TTS_INSTRUCTIONS=Warm, calm, reassuring bank specialist. Natural pace.
+AI_TTS_BASE_URL=http://gpu-box:8091/v1
 ```
 
-2. If the AI is idle (no response between `response.created` and `response.done`, and the caller is not speaking), send `{ "type": "response.create" }` so the instruction takes effect now. If it is busy, do nothing more: the item is already in the conversation and shapes the next response.
-3. Confirm to core: `POST /core/calls/:call_id/interventions/:intervention_id/applied`. Core writes the `INSTRUCTION_APPLIED` audit event and the staff-only "Instruction applied: ..." transcript line. It is idempotent.
+The vLLM provider asks for a streamed WAV (`stream: true`, `stream_format: "audio"`, `response_format: "wav"`, so the rate comes from the header) when the speed is 1.0, and falls back to one plain WAV request if the server answers 4xx or the speed is not 1.0. core still waits for each sentence's audio to finish before queuing it, so streaming mostly saves the server's buffering today; per-sentence chunks keep the first audio short. Try a voice before switching:
 
-Never show or speak the instruction to the caller. Instructions cannot bypass policy: every action still goes through core's tools and the api's policy engine.
-
-## 7. Takeover and handback
-
-**`call.command` TAKEOVER** (`text` = "You're now speaking with Alex from our team"):
-
-1. Stop the AI: if a response is in progress send `{ "type": "response.cancel" }`, then `{ "type": "output_audio_buffer.clear" }` (WebRTC only) to cut the audio already buffered.
-2. Turn automatic responses off but keep transcription running:
-
-```json
-{
-  "type": "session.update",
-  "session": {
-    "type": "realtime",
-    "audio": { "input": { "turn_detection": { "type": "server_vad", "create_response": false, "interrupt_response": false } } }
-  }
-}
+```bash
+curl -X POST localhost:3001/core/ai/speech -H 'content-type: application/json' -D - -o qwen.wav \
+  -d '{"provider":"vllm","model":"Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice","voice":"vivian","text":"Thanks for holding.","instructions":"Warm and calm."}'
 ```
 
-   `session.update` changes only the fields you send; `type: "realtime"` is required in every update. Voice and model cannot be changed mid-session.
-3. Mute the model's audio element (`audio_element.muted = true`) as a second guard, play the handover tone, and speak `text` with `speechSynthesis`.
-4. Keep relaying `conversation.item.input_audio_transcription.completed` as CUSTOMER turns so the supervisor sees what the caller says. Do not send `response.create` and do not execute tools while a human has the call.
-5. Staff audio arrives on a separate peer connection, signalled with the socket `webrtc_signal` message (`sender: 'STAFF'` is relayed to the phone's `call:<id>` room, `sender: 'PHONE'` to `staff`). The typed fallback arrives as `call.command` STAFF_MESSAGE: speak `text` with `speechSynthesis` in a different voice, labelled with `staff_name`.
+(A try-it request with `provider: vllm` uses `AI_TTS_BASE_URL` only when vLLM is also the configured TTS provider; otherwise it uses `VLLM_BASE_URL`.)
 
-**`call.command` HANDBACK** (`text` = the staff member's one-line note):
+### Adding a provider
 
-1. Unmute the audio element and turn automatic responses back on (same `session.update` with `create_response: true, interrupt_response: true`).
-2. Inject the note exactly like a whisper (`Supervisor instruction: <text>`), then send `{ "type": "response.create" }` so the AI picks the call back up.
-3. Confirm with `POST /core/calls/:call_id/interventions/:intervention_id/applied` (accepted for HANDBACK as well as INSTRUCTION).
+1. Create `src/ai/providers/<name>.provider.ts`: an `@Injectable()` class extending `AiProvider` (or `OpenAiCompatibleProvider` for an OpenAI-style API) with `provider_name`, `capabilities`, `configuration_hint`, `isConfigured()`, `listModels()` and the capabilities it supports.
+2. Add `<name>` to `AI_PROVIDER_NAMES` (`types/ai_provider_name.type.ts`), the class to `AI_PROVIDER_CLASSES` in `ai.module.ts`, and its connection keys to `src/config/ai.config.ts`.
+3. Point `AI_CHAT_PROVIDER` / `AI_STT_PROVIDER` / `AI_TTS_PROVIDER` at it.
 
-**`call.command` END_CALL**: close the peer connection and stop the microphone. Core has already ended the call.
+A capability a provider does not offer throws `AI_CAPABILITY_NOT_SUPPORTED`; a wrong route in `.env` is logged at startup and reported by `/core/ai/status` and `/core/voice/status`, never fatal.
 
-When the caller hangs up: close the peer connection and `POST /core/calls/:call_id/end` with `{ "ended_by": "CUSTOMER" }` (idempotent).
+### Auditioning models and voices (no restart)
 
-## 8. Metrics
-
-- Response time: milliseconds from `input_audio_buffer.speech_stopped` to the next `output_audio_buffer.started`. Send it as `latency_ms` on the AI turn. (`POST /core/calls/:call_id/metrics` also accepts `response_time_ms`; use one or the other for a turn, not both, or it is counted twice.)
-- Cost: on every `response.done`, post the usage of that response. Core accumulates it and recomputes `estimated_cost_usd` from the configured per-million prices.
-
-`response.usage` looks like:
-
-```json
-{
-  "total_tokens": 1500, "input_tokens": 1200, "output_tokens": 300,
-  "input_token_details": {
-    "text_tokens": 400, "audio_tokens": 800, "cached_tokens": 600,
-    "cached_tokens_details": { "text_tokens": 300, "audio_tokens": 300 }
-  },
-  "output_token_details": { "text_tokens": 60, "audio_tokens": 240 }
-}
+```bash
+curl localhost:3001/core/ai/status                                   # per capability: provider, model, reachable, detail
+curl localhost:3001/core/ai/providers/speaches/models                # { models: [...] }
+curl -X POST localhost:3001/core/ai/speech -H 'content-type: application/json' \
+  -d '{"text":"Thanks for holding.","voice":"bf_isabella","speed":1.05}' -D - -o line.wav   # x-latency-ms, x-provider, x-model
+curl -X POST localhost:3001/core/ai/transcriptions -F file=@line.wav -F model=Systran/faster-whisper-small.en
+curl -X POST localhost:3001/core/ai/chat -H 'content-type: application/json' \
+  -d '{"provider":"ollama","model":"qwen3:1.7b","messages":[{"role":"user","content":"Say hi"}]}'   # text, tool_calls, usage, latency_ms, first_token_ms
 ```
 
-`input_token_details.text_tokens` and `.audio_tokens` INCLUDE the cached tokens, and cached tokens are billed at their own cheaper rate, so subtract them:
+Every try-it request accepts `provider` (and `model`, `voice`) to override `core/.env` for that one request. Once happy, put the choice in `core/.env` and restart.
 
-```ts
-const input_details = usage.input_token_details ?? {};
-const cached_details = input_details.cached_tokens_details ?? {};
-await fetch(`/core/calls/${call_id}/metrics`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    usage: {
-      input_text_tokens: (input_details.text_tokens ?? 0) - (cached_details.text_tokens ?? 0),
-      input_audio_tokens: (input_details.audio_tokens ?? 0) - (cached_details.audio_tokens ?? 0),
-      cached_input_tokens: input_details.cached_tokens ?? 0,
-      output_text_tokens: usage.output_token_details?.text_tokens ?? 0,
-      output_audio_tokens: usage.output_token_details?.audio_tokens ?? 0,
-    },
-  }),
-});
-```
+## Configuration (`core/.env`, see `core/.env.example`)
 
-Input transcription is billed separately (the `usage` on the `...transcription.completed` event) and is not part of this estimate.
+`AI_CHAT_BASE_URL` / `AI_STT_BASE_URL` / `AI_TTS_BASE_URL` (optional per-capability servers), `AI_TTS_INSTRUCTIONS`; `LIVEKIT_URL` (how core reaches LiveKit), `LIVEKIT_PUBLIC_URL` (browser-facing; empty = `ws://<page host>:7880`), `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` (= root `MEDIA_API_KEY` / `MEDIA_API_SECRET`); `AI_CHAT_*`, `AI_STT_*`, `AI_TTS_*` (provider, model, voices, speed, timeouts); `OLLAMA_*`, `VLLM_*`, `OPENAI_*`, `SPEACHES_*` connections; `VAD_*`; `HOLD_*`; `PRICE_*`.
 
-## 9. Things that differ from older Realtime examples
+Use a non-thinking (instruct) chat model: a thinking model adds seconds of silence before every answer.
 
-- GA event names: `response.output_audio_transcript.*` and `response.output_audio.*` (the beta used `response.audio_transcript.*` and `response.audio.*`).
-- The session object needs `type: "realtime"`, and audio settings live under `session.audio.input` / `session.audio.output` (voice is `audio.output.voice`, transcription is `audio.input.transcription`).
-- The SDP exchange goes to `/v1/realtime/calls` with the ephemeral secret. No `OpenAI-Beta` header and no `?model=` query: the model comes from the session bound to the secret.
-- The docs' current examples name a newer model (`gpt-realtime-2.1`) and transcription model (`gpt-transcribe`). The contract's defaults (`gpt-realtime`, `gpt-4o-mini-transcribe`) are still accepted values; change `OPENAI_REALTIME_MODEL` / `OPENAI_TRANSCRIPTION_MODEL` in `core/.env` to switch, and update the price variables to match the model you pick.
+## Socket events added
+
+`call.hold` (rooms `staff`, `call:<id>`): `{ call_id, is_on_hold, reason: 'CHECKING_SYSTEM' | 'WAITING_FOR_APP_APPROVAL', tool_name, started_at, ended_at }`. Scripted and simulated calls get the same events from the tool dispatcher. `call.transcript_delta` from the voice agent goes to `staff` and `call:<id>`. The `webrtc_signal` relay is gone.

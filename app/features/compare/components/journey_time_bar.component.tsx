@@ -16,10 +16,10 @@ export function JourneyTimeBar({ journey, side, longest_total_seconds }: Journey
   const bar_width_percent = longest_total_seconds > 0 ? (journey.total_seconds / longest_total_seconds) * 100 : 0;
   const counted_steps = journey.steps.filter((journey_step) => !journey_step.is_optional_path);
   return (
-    <div className="grid grid-cols-[18rem_1fr_8rem] items-center gap-5">
-      <p className={`text-xl font-bold ${side_style.heading_class_name}`}>{journey.title}</p>
-      <div className="h-8">
-        <div className="flex h-full animate-fade-in gap-0.5 overflow-hidden rounded-lg" style={{ width: `${Math.max(bar_width_percent, 1)}%` }}>
+    <div className="grid grid-cols-[minmax(8rem,14rem)_1fr_5rem] items-center gap-4">
+      <p className="text-sm font-medium">{journey.title}</p>
+      <div className="h-5" aria-hidden>
+        <div className="flex h-full animate-fade-in gap-0.5 overflow-hidden rounded" style={{ width: `${Math.max(bar_width_percent, 1)}%` }}>
           {counted_steps.map((journey_step, step_index) => (
             <div
               key={journey_step.label}
@@ -30,7 +30,7 @@ export function JourneyTimeBar({ journey, side, longest_total_seconds }: Journey
           ))}
         </div>
       </div>
-      <p className={`text-right text-2xl font-black tabular-nums ${side_style.total_class_name}`}>{formatLongDuration(journey.total_seconds)}</p>
+      <p className="text-right font-semibold tabular-nums">{formatLongDuration(journey.total_seconds)}</p>
     </div>
   );
 }

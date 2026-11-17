@@ -26,6 +26,12 @@ export class TrySpeechDto {
   @IsString()
   voice?: string;
 
+  // Tone guidance for providers that accept it (overrides AI_TTS_INSTRUCTIONS).
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  instructions?: string;
+
   @IsOptional()
   @IsNumber()
   @Min(0.5)

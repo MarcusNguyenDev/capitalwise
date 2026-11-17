@@ -40,6 +40,11 @@ export interface PhoneCallSession {
    */
   handleTurn?: (turn: CallTurn) => void;
   handleTranscriptDelta?: (transcript_delta: TranscriptDelta) => void;
+  /**
+   * Only a live call: a line the caller typed instead of saying it. `core`
+   * records it as the caller's turn, so it is captioned like speech.
+   */
+  sendTypedMessage?: (text: string) => Promise<void>;
   /** From a click, when the browser blocked the call audio from autoplaying. */
   unlockAudio: () => void;
   setMicrophoneMuted: (is_muted: boolean) => void;

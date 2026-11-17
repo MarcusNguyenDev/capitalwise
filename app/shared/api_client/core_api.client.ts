@@ -7,6 +7,7 @@ import type {
   CallScript,
   CallScriptSummary,
   CallTurn,
+  CustomerMessageReceipt,
   Intervention,
   InterventionType,
   LiveCall,
@@ -39,6 +40,9 @@ export const recordTurn = (call_id: string, turn: { speaker: "CUSTOMER" | "AI" |
   callCore<CallTurn>({ path: `/calls/${call_id}/turns`, method: "POST", body: turn });
 export const callTool = (call_id: string, tool_name: string, args: Record<string, unknown>) =>
   callCore<ToolCallResponse>({ path: `/calls/${call_id}/tools/${tool_name}`, method: "POST", body: { args } });
+/** A line the caller typed instead of saying it, on a Live call (1 to 500 characters). */
+export const sendCustomerMessage = (call_id: string, text: string) =>
+  callCore<CustomerMessageReceipt>({ path: `/calls/${call_id}/customer_messages`, method: "POST", body: { text } });
 
 // Supervisor controls
 export const recordIntervention = (

@@ -98,7 +98,10 @@ describe('OllamaProvider', () => {
       role: 'assistant',
       content: '',
       tool_calls: [
-        { id: 'call_1', function: { name: 'send_identity_push', arguments: {} } },
+        {
+          id: 'call_1',
+          function: { name: 'send_identity_push', arguments: {} },
+        },
       ],
     });
     expect(request_body.messages[3]).toMatchObject({
@@ -111,7 +114,10 @@ describe('OllamaProvider', () => {
   it('streams text deltas split across network chunks and reports usage', async () => {
     const ndjson_text = toNdjson([
       { message: { role: 'assistant', content: 'Hi Sarah, ' }, done: false },
-      { message: { role: 'assistant', content: 'how can I help?' }, done: false },
+      {
+        message: { role: 'assistant', content: 'how can I help?' },
+        done: false,
+      },
       {
         message: { role: 'assistant', content: '' },
         done: true,
@@ -137,7 +143,11 @@ describe('OllamaProvider', () => {
       {
         type: 'done',
         finish_reason: 'stop',
-        usage: { input_tokens: 812, output_tokens: 9, cached_input_tokens: 790 },
+        usage: {
+          input_tokens: 812,
+          output_tokens: 9,
+          cached_input_tokens: 790,
+        },
       },
     ]);
   });
@@ -151,8 +161,16 @@ describe('OllamaProvider', () => {
               role: 'assistant',
               content: '',
               tool_calls: [
-                { function: { name: 'lock_card', arguments: { card_id: 'CRD-10011' } } },
-                { id: 'call_abc', function: { name: 'get_held_payments', arguments: '{}' } },
+                {
+                  function: {
+                    name: 'lock_card',
+                    arguments: { card_id: 'CRD-10011' },
+                  },
+                },
+                {
+                  id: 'call_abc',
+                  function: { name: 'get_held_payments', arguments: '{}' },
+                },
               ],
             },
             done: false,
@@ -188,7 +206,10 @@ describe('OllamaProvider', () => {
     global.fetch = jest.fn().mockResolvedValue(
       buildStreamedResponse([
         toNdjson([
-          { message: { thinking: 'The user lost a card', content: '' }, done: false },
+          {
+            message: { thinking: 'The user lost a card', content: '' },
+            done: false,
+          },
           { message: { content: '<thi' }, done: false },
           { message: { content: 'nk>plan the reply</th' }, done: false },
           { message: { content: 'ink>Let us lock it.' }, done: false },
@@ -213,7 +234,9 @@ describe('OllamaProvider', () => {
     global.fetch = jest
       .fn()
       .mockResolvedValue(
-        buildStreamedResponse([toNdjson([{ error: 'model "gpt-6:luna" not found' }])]),
+        buildStreamedResponse([
+          toNdjson([{ error: 'model "gpt-6:luna" not found' }]),
+        ]),
       ) as unknown as typeof fetch;
     await expect(
       collectEvents(buildProvider().chat(buildChatRequest())),
@@ -247,7 +270,9 @@ describe('OllamaProvider', () => {
   it('lists models from /api/tags and refuses speech capabilities', async () => {
     global.fetch = jest.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ models: [{ name: 'gpt-6:luna' }, { name: 'qwen3:1.7b' }] }),
+        JSON.stringify({
+          models: [{ name: 'gpt-6:luna' }, { name: 'qwen3:1.7b' }],
+        }),
       ),
     ) as unknown as typeof fetch;
     const provider = buildProvider('http://ollama.test:11434');
@@ -275,5 +300,71 @@ describe('OllamaProvider', () => {
       is_reachable: false,
       detail: expect.stringContaining('OLLAMA_BASE_URL'),
     });
+  });
+
+  it('maps the voice agent opening round (greeting with a tool call, then its result)', async () => {
+    const fetch_mock = jest.fn().mockResolvedValue(
+      buildStreamedResponse([
+        toNdjson([
+          {
+            message: { content: 'Hi Sarah.' },
+            done: true,
+            done_reason: 'stop',
+          },
+        ]),
+      ]),
+    );
+    global.fetch = fetch_mock as unknown as typeof fetch;
+    const greeting =
+      "Hello, you've reached Demo Bank's AI specialist. This call is recorded.";
+
+    const chat_events = await collectEvents(
+      buildProvider().chat(
+        buildChatRequest({
+          messages: [
+            { role: 'system', content: 'You are a bank agent.' },
+            {
+              role: 'assistant',
+              content: greeting,
+              tool_calls: [
+                {
+                  tool_call_id: 'call_opening_caller_context',
+                  name: 'get_caller_context',
+                  arguments: {},
+                },
+              ],
+            },
+            {
+              role: 'tool',
+              tool_call_id: 'call_opening_caller_context',
+              name: 'get_caller_context',
+              content:
+                '{"ok":true,"result":{"matched":true,"first_name":"Sarah"}}',
+            },
+          ],
+        }),
+      ),
+    );
+
+    const request_body = JSON.parse(fetch_mock.mock.calls[0][1].body);
+    expect(request_body.messages.slice(1)).toEqual([
+      {
+        role: 'assistant',
+        content: greeting,
+        tool_calls: [
+          {
+            id: 'call_opening_caller_context',
+            function: { name: 'get_caller_context', arguments: {} },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_name: 'get_caller_context',
+        tool_call_id: 'call_opening_caller_context',
+        content: '{"ok":true,"result":{"matched":true,"first_name":"Sarah"}}',
+      },
+    ]);
+    expect(chat_events[0]).toEqual({ type: 'text_delta', text: 'Hi Sarah.' });
   });
 });

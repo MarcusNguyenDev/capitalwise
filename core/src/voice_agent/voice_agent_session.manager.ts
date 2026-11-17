@@ -15,6 +15,7 @@ import { CallHoldService } from '../calls/call_hold.service';
 import { CallsService } from '../calls/calls.service';
 import { CallRow } from '../calls/types/call_row.type';
 import { appConfig } from '../config/app.config';
+import { costGuardConfig } from '../config/cost_guard.config';
 import { aiConfig } from '../config/ai.config';
 import { holdBufferConfig } from '../config/hold_buffer.config';
 import { HoldPolicy } from '../hold_buffer/hold.policy';
@@ -45,6 +46,7 @@ import { LivekitAgentRoom } from './livekit_agent.room';
 import { AgentRoom } from './types/agent_room.type';
 import { VoiceAgentSessionDependencies } from './types/voice_agent_session_dependencies.type';
 import { VoiceAgentSession } from './voice_agent.session';
+import { describeCallDate } from './describe_call_date.util';
 
 // One voice agent per LIVE call, in-process. Starts them, routes supervisor
 // commands to them and makes sure none outlives its call.
@@ -76,6 +78,8 @@ export class VoiceAgentSessionManager
     private readonly ai_config: ConfigType<typeof aiConfig>,
     @Inject(holdBufferConfig.KEY)
     private readonly hold_buffer_config: ConfigType<typeof holdBufferConfig>,
+    @Inject(costGuardConfig.KEY)
+    private readonly cost_guard_config: ConfigType<typeof costGuardConfig>,
   ) {}
 
   onModuleInit(): void {
@@ -103,6 +107,15 @@ export class VoiceAgentSessionManager
 
   hasSession(call_id: string): boolean {
     return this.sessions.has(call_id) || this.starting_sessions.has(call_id);
+  }
+
+  // A line the caller typed on the phone. False when no agent is listening on
+  // the call (never started, stopped, or the caller has not joined yet).
+  acceptTypedCustomerMessage(call_id: string, typed_text: string): boolean {
+    return (
+      this.sessions.get(call_id)?.acceptTypedCustomerMessage(typed_text) ??
+      false
+    );
   }
 
   // Idempotent: a second session request for the same call reuses the agent.
@@ -150,7 +163,8 @@ export class VoiceAgentSessionManager
     const session = new VoiceAgentSession(
       this.buildDependencies(call, {
         agent_room,
-        system_prompt: voice_agent_instructions.instructions,
+        // Fixed for the whole call, so the prompt prefix stays cacheable.
+        system_prompt: `${voice_agent_instructions.instructions}\n\n${describeCallDate(new Date(), this.app_config.bank_time_zone)}`,
         onStopped: () => {
           if (this.sessions.get(call.call_id) === session) {
             this.sessions.delete(call.call_id);
@@ -189,6 +203,11 @@ export class VoiceAgentSessionManager
         staff_voice: this.ai_config.synthesize.staff_voice,
         is_hold_tone_enabled: this.hold_buffer_config.is_tone_enabled,
         is_human_active_at_start: call.status === 'HUMAN_ACTIVE',
+        // A paid chat API is never sent the extra warm-up request.
+        is_prompt_warm_up_enabled: this.ai_config.chat.provider !== 'openai',
+        max_call_cost_usd: this.cost_guard_config.max_call_cost_usd,
+        max_call_ms: this.cost_guard_config.max_live_call_minutes * 60_000,
+        idle_hangup_ms: this.cost_guard_config.idle_hangup_seconds * 1_000,
       },
       agent_room: session_parts.agent_room,
       hold_policy: new HoldPolicy(this.hold_buffer_config),
@@ -196,18 +215,22 @@ export class VoiceAgentSessionManager
         this.voice_activity_detector_factory.createDetector(),
       ai: {
         chat: (chat_request) => this.ai_service.chat(chat_request),
-        transcribe: (transcription_request) =>
-          this.ai_service.transcribe(transcription_request),
-        synthesize: (speech_request) =>
-          this.ai_service.synthesize(speech_request),
+        openTranscriptionStream: () =>
+          this.ai_service.openTranscriptionStream(),
+        synthesizeStream: (speech_request) =>
+          this.ai_service.synthesizeStream(speech_request),
+        releaseSpeechSessions: () =>
+          this.ai_service.releaseSpeechSessions(call.call_id),
       },
       getPhraseAudio: (phrase_text, voice) =>
         this.phrase_audio_cache.getPhraseAudio(phrase_text, voice),
       calls: {
         addTurn: (call_id, new_turn) =>
           this.calls_service.addTurn(call_id, new_turn),
-        recordUsage: (call_id, usage) =>
-          this.calls_service.recordMetrics(call_id, { usage }),
+        recordUsage: async (call_id, usage) =>
+          (await this.calls_service.recordMetrics(call_id, { usage })).metrics
+            .estimated_cost_usd ?? 0,
+        recordTtsDrift: (call_id) => this.calls_service.recordTtsDrift(call_id),
         endCall: (call_id, end_call) =>
           this.calls_service.endCall(call_id, end_call),
       },
@@ -223,10 +246,10 @@ export class VoiceAgentSessionManager
           call_id,
           intervention_id,
         ),
-      emitTranscriptDelta: (delta, item_id) =>
+      emitTranscriptDelta: (delta, item_id, speaker) =>
         this.live_broadcaster.emitToRooms(
           LIVE_EVENT.CALL_TRANSCRIPT_DELTA,
-          { call_id: call.call_id, speaker: 'AI', delta, item_id },
+          { call_id: call.call_id, speaker, delta, item_id },
           [STAFF_ROOM, buildCallRoom(call.call_id)],
         ),
       onStopped: session_parts.onStopped,
